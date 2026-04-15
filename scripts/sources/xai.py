@@ -85,15 +85,16 @@ def _extract_json_array(text: str) -> Optional[List[Any]]:
 
 
 #: Regex for extracting $TICKER mentions from post text. Requires the dollar
-#: sign to disambiguate from English words. 2-10 alphanumeric chars after `$`.
-TICKER_RE = re.compile(r"\$([A-Z][A-Z0-9]{1,9})\b")
+#: sign to disambiguate from English words. Case-insensitive: `$serv` and
+#: `$SERV` both match, then normalised to uppercase. 2-10 alphanumeric chars.
+TICKER_RE = re.compile(r"\$([A-Za-z][A-Za-z0-9]{1,9})\b")
 
 
 def extract_tickers(text: str) -> List[str]:
     """Return unique uppercased ticker symbols mentioned in a post body."""
     if not text:
         return []
-    found = TICKER_RE.findall(text)
+    found = [t.upper() for t in TICKER_RE.findall(text)]
     # Preserve order, dedupe
     seen: List[str] = []
     for ticker in found:

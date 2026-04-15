@@ -19,6 +19,7 @@ import urllib.request
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from lib import ignore as ignore_list
 from sources._base import Source
 
 BASE = "https://api.llama.fi"
@@ -146,6 +147,8 @@ class DeFiLlama(Source):
             name = proto.get("name")
             slug = proto.get("slug") or (name.lower().replace(" ", "-") if name else None)
             if not slug or not name:
+                continue
+            if ignore_list.is_ignored(slug, (proto.get("symbol") or "").upper(), name):
                 continue
             candidates.append({
                 "slug": slug,

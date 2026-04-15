@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from lib import storage
+from lib import ignore as ignore_list
 
 
 def _fmt_mcap(v: Any) -> str:
@@ -54,7 +55,9 @@ def _biggest_mover(projects: List[Dict[str, Any]]) -> Dict[str, Any] | None:
 def _hottest_kol_ticker(kol_posts: List[Dict[str, Any]]) -> str | None:
     tickers: List[str] = []
     for post in kol_posts:
-        tickers.extend(post.get("tickers") or [])
+        for t in post.get("tickers") or []:
+            if not ignore_list.is_ignored(t):
+                tickers.append(t)
     if not tickers:
         return None
     counts = Counter(tickers)
@@ -76,8 +79,17 @@ def write_daily_reports(
     velocity: Dict[str, Dict[str, Any]],
     scout: List[Dict[str, Any]],
     kol_posts: List[Dict[str, Any]],
+    first_mentions: List[Dict[str, Any]] | None = None,
+    narrative_rotation: Dict[str, Dict[str, Any]] | None = None,
 ) -> Tuple[Path, Path]:
     """Write full and brief reports. Returns (full_path, brief_path)."""
+    # Hard-filter scout against the ignore list before anything touches it
+    scout = ignore_list.filter_candidates(scout)
+    # Filter KOL posts' ticker lists too
+    for post in kol_posts:
+        post["tickers"] = [t for t in (post.get("tickers") or []) if not ignore_list.is_ignored(t)]
+    first_mentions = first_mentions or []
+    narrative_rotation = narrative_rotation or {}
     date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     full_path = _reports_dir() / f"{date}.md"
     brief_path = _reports_dir() / f"{date}-brief.md"
@@ -150,15 +162,73 @@ def write_daily_reports(
         lines.append("_No KOL posts retrieved (check XAI_API_KEY)._")
     lines.append("")
 
-    # 4. Trending narratives
-    lines.append("## Trending narratives")
+    # 3.5. KOL first-mentions (auto-scout)
+    lines.append("## KOL first-mentions")
     lines.append("")
-    narratives = _trending_narratives(scout)
-    if narratives:
-        for tag, count in narratives:
-            lines.append(f"- **{tag}**: {count} candidates")
+    added = [r for r in first_mentions if r.get("action") == "first-mention-added"]
+    unresolved = [r for r in first_mentions if r.get("action") == "first-mention-unresolved"]
+    existing = [r for r in first_mentions if r.get("action") == "existing-watchlist"]
+    if added:
+        lines.append("### Auto-added to watchlist (scout tier)")
+        lines.append("")
+        for r in added:
+            slug = r.get("resolved_slug")
+            lines.append(
+                f"- **@{r.get('kol')}** → `${r.get('ticker')}` → [[{slug}]]"
+            )
+            if r.get("post_text"):
+                lines.append(f"  > {r['post_text']}")
+            if r.get("post_url"):
+                lines.append(f"  [{r['post_url']}]({r['post_url']})")
+        lines.append("")
+    if unresolved:
+        lines.append("### Unresolved first-mentions (manual review)")
+        lines.append("")
+        for r in unresolved:
+            lines.append(
+                f"- **@{r.get('kol')}** → `${r.get('ticker')}` — not on CoinGecko, possibly pre-launch"
+            )
+            if r.get("post_text"):
+                lines.append(f"  > {r['post_text']}")
+            if r.get("post_url"):
+                lines.append(f"  [{r['post_url']}]({r['post_url']})")
+        lines.append("")
+    if existing:
+        lines.append("### KOL signal on tracked projects")
+        lines.append("")
+        for r in existing:
+            slug = r.get("resolved_slug")
+            lines.append(f"- **@{r.get('kol')}** mentioned `${r.get('ticker')}` → [[{slug}]]")
+        lines.append("")
+    if not (added or unresolved or existing):
+        lines.append("_No new first-mentions today._")
+        lines.append("")
+
+    # 4. Trending narratives + rotation velocity
+    lines.append("## Narrative rotation")
+    lines.append("")
+    if narrative_rotation:
+        lines.append("| Narrative | Today | 7d avg | Velocity |")
+        lines.append("|---|---|---|---|")
+        rows = sorted(
+            narrative_rotation.items(),
+            key=lambda kv: (kv[1].get("count") or kv[1].get("today") or 0),
+            reverse=True,
+        )
+        for tag, data in rows[:12]:
+            today_count = data.get("count") or data.get("today") or 0
+            avg = data.get("avg")
+            velocity = data.get("velocity")
+            avg_str = f"{avg}" if avg is not None else "—"
+            vel_str = f"{velocity:+}" if isinstance(velocity, (int, float)) else "—"
+            lines.append(f"| **{tag}** | {today_count} | {avg_str} | {vel_str} |")
     else:
-        lines.append("_No narratives inferred._")
+        narratives_fallback = _trending_narratives(scout)
+        if narratives_fallback:
+            for tag, count in narratives_fallback:
+                lines.append(f"- **{tag}**: {count} candidates")
+        else:
+            lines.append("_No narratives inferred._")
     lines.append("")
 
     # 5. Heating up (velocity)
@@ -226,10 +296,25 @@ def write_daily_reports(
     # Action item
     if actions:
         brief_lines.append(f"- **Action:** {actions[0]}")
-    # Narrative of the day
-    if narratives:
-        top_narrative = narratives[0][0]
-        brief_lines.append(f"- **Narrative of the day:** `{top_narrative}` ({narratives[0][1]} candidates)")
+    # Narrative of the day — pick from rotation if present, else fallback
+    top_narrative_tag = None
+    top_narrative_count = 0
+    if narrative_rotation:
+        rotation_sorted = sorted(
+            narrative_rotation.items(),
+            key=lambda kv: (kv[1].get("count") or kv[1].get("today") or 0),
+            reverse=True,
+        )
+        if rotation_sorted:
+            top_narrative_tag = rotation_sorted[0][0]
+            data = rotation_sorted[0][1]
+            top_narrative_count = data.get("count") or data.get("today") or 0
+    else:
+        fallback = _trending_narratives(scout)
+        if fallback:
+            top_narrative_tag, top_narrative_count = fallback[0]
+    if top_narrative_tag:
+        brief_lines.append(f"- **Narrative of the day:** `{top_narrative_tag}` ({top_narrative_count} candidates)")
 
     if len(brief_lines) == 2:
         brief_lines.append("_Not enough signal today — check again tomorrow._")

@@ -5,9 +5,13 @@ tracked project, columns for price/mcap/social/mention signals. Markdown
 tables are fully Obsidian-readable AND parseable by the aggregator.
 
 The aggregator reads N days of snapshots to compute velocity and divergence.
+
+Snapshots also embed a narrative distribution section per day so the
+rotation aggregator can compare today against recent history.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -73,13 +77,18 @@ def _raw_cell(value: Any) -> str:
     return str(value)
 
 
-def write_daily_snapshot(projects: List[Dict[str, Any]], date: Optional[str] = None) -> Path:
+def write_daily_snapshot(
+    projects: List[Dict[str, Any]],
+    narrative_counts: Optional[Dict[str, Dict[str, Any]]] = None,
+    date: Optional[str] = None,
+) -> Path:
     """Write a snapshot row per project to today's file. Preserves any prior
     snapshot for the same date by overwriting (idempotent within a day).
 
-    Writes TWO tables:
-      1. Human-readable (formatted numbers, for Obsidian display)
-      2. Raw values section (for aggregator parsing — unformatted)
+    Writes:
+      1. Human-readable project table (formatted numbers, for Obsidian display)
+      2. Raw values code block (for aggregator parsing — unformatted CSV)
+      3. Narrative distribution code block (JSON, for rotation aggregator)
     """
     if date is None:
         date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -109,8 +118,50 @@ def write_daily_snapshot(projects: List[Dict[str, Any]], date: Optional[str] = N
     lines.append("```")
     lines.append("")
 
+    # Narrative distribution as JSON block for rotation aggregator
+    if narrative_counts:
+        lines.append("## Narrative distribution")
+        lines.append("")
+        lines.append("```json")
+        # Strip samples down to just counts for compactness
+        compact = {tag: data.get("count", 0) for tag, data in narrative_counts.items()}
+        lines.append(json.dumps({"date": date, "counts": compact}, indent=2))
+        lines.append("```")
+        lines.append("")
+
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def read_narrative_history(window_days: int = 7) -> List[Dict[str, Any]]:
+    """Read the narrative distribution block from the last N days of snapshots.
+
+    Returns a list of {date, counts: {tag: int}} sorted oldest to newest.
+    """
+    d = _snapshots_dir()
+    if not d.exists():
+        return []
+    files = sorted(d.glob("*.md"))[-window_days:]
+    history: List[Dict[str, Any]] = []
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        marker = "## Narrative distribution"
+        idx = text.find(marker)
+        if idx == -1:
+            continue
+        block_start = text.find("```json", idx)
+        if block_start == -1:
+            continue
+        block_start += len("```json")
+        block_end = text.find("```", block_start)
+        if block_end == -1:
+            continue
+        try:
+            payload = json.loads(text[block_start:block_end].strip())
+            history.append(payload)
+        except json.JSONDecodeError:
+            continue
+    return history
 
 
 def read_snapshot(date: str) -> List[Dict[str, Any]]:

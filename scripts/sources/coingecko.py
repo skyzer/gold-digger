@@ -18,6 +18,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+from lib import ignore as ignore_list
 from sources._base import Source
 
 # Mutable process-scoped tier cache. First successful call pins it.
@@ -95,6 +96,29 @@ def _get(path: str, params: Dict[str, Any], key: str) -> Optional[Any]:
         _DETECTED_TIER = tier  # cache the working tier
         return result
     return None
+
+
+def search_coin(query: str, key: str) -> Optional[Dict[str, Any]]:
+    """Resolve a ticker or project name to a CoinGecko coin entry.
+
+    Uses `/search?query=<q>`. Returns the best match (first coin result) or
+    None. The caller decides whether to trust it — we don't auto-promote
+    based on search alone.
+    """
+    if not query or not key:
+        return None
+    data = _get("/search", {"query": query}, key)
+    if not isinstance(data, dict):
+        return None
+    coins = data.get("coins") or []
+    if not coins:
+        return None
+    # Prefer exact symbol match if the query looks like a ticker (ALLCAPS, 2-10 chars)
+    if query.isupper() and 2 <= len(query) <= 10:
+        for c in coins:
+            if (c.get("symbol") or "").upper() == query:
+                return c
+    return coins[0]
 
 
 class CoinGecko(Source):
@@ -219,6 +243,12 @@ class CoinGecko(Source):
             if mcap is None or mcap < min_mcap or mcap > max_mcap:
                 continue
             if not coin.get("id"):
+                continue
+            if ignore_list.is_ignored(
+                coin.get("id"),
+                (coin.get("symbol") or "").upper(),
+                coin.get("name"),
+            ):
                 continue
             candidates.append({
                 "slug": coin.get("id"),

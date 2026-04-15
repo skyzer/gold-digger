@@ -27,6 +27,9 @@ from lib import keys as key_resolver  # noqa: E402
 from lib import storage  # noqa: E402
 from lib import schema  # noqa: E402
 from lib import kols as kol_lib  # noqa: E402
+from lib import first_mention  # noqa: E402
+from lib import narratives as narrative_lib  # noqa: E402
+from lib import ignore as ignore_list  # noqa: E402
 from sources._base import Source  # noqa: E402
 from sources.coingecko import CoinGecko  # noqa: E402
 from sources.xai import XaiGrok, fetch_kol_posts  # noqa: E402
@@ -264,6 +267,38 @@ def cmd_research(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_first_mentions(args: argparse.Namespace) -> int:
+    """Run the KOL first-mention auto-scout pass in isolation."""
+    keys = all_keys()
+    xai_key = keys.get("XAI_API_KEY")
+    if not xai_key:
+        print("XAI_API_KEY required.")
+        return 1
+    since = args.since_hours
+    kols = kol_lib.load_all()
+    print(f"[first-mention] polling {len(kols)} KOLs over last {since}h\n")
+    all_posts: List[Dict[str, Any]] = []
+    for kol in kols:
+        handle = kol.get("handle")
+        posts = fetch_kol_posts(handle, xai_key, since_hours=since, limit=15)
+        print(f"  @{handle}: {len(posts)} posts")
+        all_posts.extend(posts)
+    if not all_posts:
+        print("No posts retrieved.")
+        return 0
+    results = first_mention.process_posts(all_posts, coingecko_key=keys.get("COINGECKO_API_KEY"))
+    print(f"\nProcessed {len(results)} ticker mentions:")
+    for action_type in ("first-mention-added", "first-mention-unresolved", "existing-watchlist", "ignored", "already-processed"):
+        subset = [r for r in results if r.get("action") == action_type]
+        if not subset:
+            continue
+        print(f"\n  {action_type} ({len(subset)}):")
+        for r in subset[:20]:
+            suffix = f" → [[{r.get('resolved_slug')}]]" if r.get("resolved_slug") else ""
+            print(f"    @{r.get('kol')} → ${r.get('ticker')}{suffix}")
+    return 0
+
+
 def cmd_kols(args: argparse.Namespace) -> int:
     """Fetch recent posts from every tracked KOL. Prints a digest."""
     keys = all_keys()
@@ -345,7 +380,11 @@ def cmd_daily(_args: argparse.Namespace) -> int:
         else:
             enriched_projects.append(fm)
 
-    # 2. Write today's snapshot
+    # 2. Scout pass happens later; pre-compute narrative distribution only if
+    #    we already have scout candidates. We'll re-snapshot after scout runs.
+    scout_candidates_pre: List[Dict[str, Any]] = []
+
+    # Write today's snapshot (projects only for now)
     snap_path = snapshots.write_daily_snapshot(enriched_projects)
     print(f"\n[snapshot] written → {snap_path}")
 
@@ -362,10 +401,20 @@ def cmd_daily(_args: argparse.Namespace) -> int:
         try:
             found = src.fetch_scout(keys, config={})
             if found:
-                print(f"  {src.name}: {len(found)} candidates")
+                print(f"  {src.name}: {len(found)} candidates (pre-filter)")
                 scout_candidates.extend(found)
         except Exception as exc:
             print(f"  {src.name}: error {exc}")
+
+    # Apply ignore filter + narrative classification
+    scout_candidates = ignore_list.filter_candidates(scout_candidates)
+    narrative_lib.tag_candidates(scout_candidates)
+    narrative_counts = narrative_lib.compute_rotation(scout_candidates)
+    print(f"  {len(scout_candidates)} candidates after ignore filter")
+    print(f"  narratives detected: {len(narrative_counts)}")
+
+    # Re-write snapshot with narrative distribution included
+    snapshots.write_daily_snapshot(enriched_projects, narrative_counts=narrative_counts)
 
     # 5. KOL digest
     print("\n[kols] running KOL digest...")
@@ -380,12 +429,28 @@ def cmd_daily(_args: argparse.Namespace) -> int:
     else:
         print("  (skipped — no XAI_API_KEY)")
 
-    # 6. Render reports
+    # 6. KOL first-mention auto-scout
+    first_mention_results: List[Dict[str, Any]] = []
+    if kol_posts:
+        print("\n[first-mention] classifying KOL ticker mentions...")
+        first_mention_results = first_mention.process_posts(
+            kol_posts, coingecko_key=keys.get("COINGECKO_API_KEY")
+        )
+        added = [r for r in first_mention_results if r.get("action") == "first-mention-added"]
+        unresolved = [r for r in first_mention_results if r.get("action") == "first-mention-unresolved"]
+        existing = [r for r in first_mention_results if r.get("action") == "existing-watchlist"]
+        ignored = [r for r in first_mention_results if r.get("action") == "ignored"]
+        print(f"  {len(added)} auto-added · {len(unresolved)} unresolved · "
+              f"{len(existing)} existing-watchlist · {len(ignored)} ignored")
+
+    # 7. Render reports
     full_path, brief_path = render.write_daily_reports(
         projects=enriched_projects,
         velocity=velocity,
         scout=scout_candidates,
         kol_posts=kol_posts,
+        first_mentions=first_mention_results,
+        narrative_rotation=narrative_lib.compute_rotation(scout_candidates),
     )
     print(f"\n[report] full  → {full_path}")
     print(f"[report] brief → {brief_path}")
@@ -419,6 +484,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_research = sub.add_parser("research", help="cited deep-dive via Perplexity")
     p_research.add_argument("slug", help="project slug to research")
     p_research.set_defaults(func=cmd_research)
+
+    p_fm = sub.add_parser("first-mentions", help="classify KOL ticker mentions + auto-add scout projects")
+    p_fm.add_argument("--since-hours", type=int, default=48)
+    p_fm.set_defaults(func=cmd_first_mentions)
 
     p_add = sub.add_parser("add-project", help="add a new project to the watchlist")
     p_add.add_argument("slug")
