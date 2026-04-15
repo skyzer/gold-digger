@@ -1,0 +1,10 @@
+{
+  "name": "gold-digger",
+  "version": "0.1.0",
+  "description": "Research early crypto-AI projects with daily compounding reports",
+  "skill_path": "./SKILL.md",
+  "scripts_path": "./scripts",
+  "requires": {
+    "python": ">=3.12"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "gold-digger",
+  "version": "0.1.0",
+  "description": "Research early crypto-AI projects with daily compounding reports",
+  "author": "skyzer",
+  "license": "MIT",
+  "homepage": "https://github.com/skyzer/gold-digger",
+  "repository": "https://github.com/skyzer/gold-digger",
+  "skill": "./SKILL.md",
+  "requires": {
+    "python": ">=3.12",
+    "bins": ["python3", "uv"],
+    "optional_skills": ["last30days"]
+  },
+  "tags": ["crypto", "ai", "research", "watchlist", "kol"]
+}

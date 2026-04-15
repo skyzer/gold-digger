@@ -1,0 +1,6 @@
+{
+  "name": "gold-digger",
+  "version": "0.1.0",
+  "description": "Research early crypto-AI projects with daily compounding reports",
+  "entrypoint": "./SKILL.md"
+}
