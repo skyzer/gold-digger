@@ -26,14 +26,25 @@ if str(SCRIPTS_DIR) not in sys.path:
 from lib import keys as key_resolver  # noqa: E402
 from lib import storage  # noqa: E402
 from lib import schema  # noqa: E402
+from lib import kols as kol_lib  # noqa: E402
 from sources._base import Source  # noqa: E402
 from sources.coingecko import CoinGecko  # noqa: E402
+from sources.xai import XaiGrok, fetch_kol_posts  # noqa: E402
+from sources.last30days import Last30Days  # noqa: E402
+from sources.defillama import DeFiLlama  # noqa: E402
+from sources.github import GitHub  # noqa: E402
+from sources.perplexity import Perplexity, research as pplx_research, project_dd_prompt  # noqa: E402
 
 
 # Source registry — add new sources here (or drop files in sources/_custom/).
 # Order matters: earlier sources run first, later sources can override fields.
 SOURCES: List[Source] = [
     CoinGecko(),
+    DeFiLlama(),
+    GitHub(),
+    XaiGrok(),
+    Last30Days(),
+    Perplexity(),
 ]
 
 
@@ -191,10 +202,193 @@ def cmd_add_project(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_research(args: argparse.Namespace) -> int:
+    """Run a cited deep-dive on a single project via Perplexity."""
+    from datetime import datetime, timezone
+    keys = all_keys()
+    pplx_key = keys.get("PERPLEXITY_API_KEY")
+    if not pplx_key:
+        print("PERPLEXITY_API_KEY not found. Add to ~/.config/shared/.env.")
+        return 1
+    slug = args.slug
+    project = _load_or_seed(slug)
+    # Run enrichment first so the DD prompt has fresh data
+    print(f"[research] {slug} — enriching first...")
+    enrich_args = argparse.Namespace(slug=slug)
+    cmd_enrich(enrich_args)
+    # Reload after enrichment
+    project, _body = storage.read_project(_slug_to_path(slug))
+    print(f"\n[research] calling Perplexity sonar-pro for cited DD brief...")
+    prompt = project_dd_prompt(project)
+    result = pplx_research(prompt, pplx_key, model="sonar-pro")
+    if not result:
+        print("Perplexity returned no result.")
+        return 1
+    text, citations = result
+    # Write research brief
+    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    research_dir = storage.data_root() / "research"
+    research_dir.mkdir(parents=True, exist_ok=True)
+    brief_path = research_dir / f"{slug}-{date}.md"
+    lines = [
+        f"# Gold Digger research brief — {project.get('name', slug)}",
+        f"_Date: {date} · Model: sonar-pro · Project: [[{slug}]]_",
+        "",
+        "## Current data",
+        "",
+        f"- **Ticker:** {project.get('ticker') or '—'}",
+        f"- **Price:** ${project.get('price_usd') or '—'}",
+        f"- **Mcap:** ${project.get('mcap') or '—'}",
+        f"- **30d change:** {project.get('change_30d_pct') or '—'}%",
+        f"- **GitHub stars:** {project.get('github_stars') or '—'}",
+        f"- **Mentions 7d:** {project.get('mention_count_7d') or 0}",
+        "",
+        "## Research brief",
+        "",
+        text,
+        "",
+        "## Citations",
+        "",
+    ]
+    for i, url in enumerate(citations, 1):
+        lines.append(f"{i}. {url}")
+    brief_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\n[research] brief → {brief_path}")
+    print(f"[research] {len(citations)} citations")
+    # Print a short preview
+    print()
+    print("=" * 60)
+    print(text[:1500])
+    if len(text) > 1500:
+        print(f"\n... ({len(text)-1500} more chars in file)")
+    return 0
+
+
+def cmd_kols(args: argparse.Namespace) -> int:
+    """Fetch recent posts from every tracked KOL. Prints a digest."""
+    keys = all_keys()
+    xai_key = keys.get("XAI_API_KEY")
+    if not xai_key:
+        print("XAI_API_KEY not found — cannot fetch KOL feeds. Add key to ~/.config/shared/.env.")
+        return 1
+    kols = kol_lib.load_all()
+    if not kols:
+        print("No KOLs configured. Drop .md files in seed/kols/ or $GOLD_DIGGER_DATA/kols/.")
+        return 1
+    since = args.since_hours
+    print(f"KOL digest — last {since}h, {len(kols)} handles\n")
+    all_posts = []
+    for kol in kols:
+        handle = kol.get("handle")
+        print(f"[@{handle}] fetching...")
+        posts = fetch_kol_posts(handle, xai_key, since_hours=since, limit=10)
+        if not posts:
+            print(f"  (no posts returned)")
+            continue
+        for post in posts:
+            tickers = ", ".join(post.get("tickers") or []) or "—"
+            date = post.get("date", "")[:19]
+            text_preview = (post.get("text") or "").replace("\n", " ")[:140]
+            print(f"  {date}  tickers=[{tickers}]")
+            print(f"    {text_preview}")
+            print(f"    {post.get('url', '')}")
+        all_posts.extend(posts)
+    # Summary: ticker frequency across all posts
+    ticker_counts: Dict[str, int] = {}
+    for post in all_posts:
+        for ticker in post.get("tickers") or []:
+            ticker_counts[ticker] = ticker_counts.get(ticker, 0) + 1
+    if ticker_counts:
+        print("\nTicker frequency:")
+        for ticker, count in sorted(ticker_counts.items(), key=lambda x: -x[1]):
+            print(f"  ${ticker}: {count}")
+    return 0
+
+
 def cmd_daily(_args: argparse.Namespace) -> int:
-    print("Daily pipeline not yet implemented in v0.1.")
-    print("Available in v0.1: `setup`, `enrich <slug>`, `scout`, `add-project <slug>`.")
-    print("Next stage wires: enrich all tracked + scout + snapshot + report render.")
+    """Full daily pipeline: enrich all tracked + snapshot + scout + KOL digest + report."""
+    from lib import snapshots, render, aggregate
+    keys = all_keys()
+    root = storage.ensure_layout()
+    print(f"Gold Digger daily run — data dir: {root}\n")
+
+    # 1. Enrich all tracked projects — copy any missing seed files first
+    seed_dir = Path(__file__).resolve().parent.parent / "seed" / "projects"
+    for seed_file in seed_dir.glob("*.md"):
+        dest = root / "projects" / seed_file.name
+        if not dest.exists():
+            fm, body = storage.read_project(seed_file)
+            storage.write_project(dest, fm, body)
+    tracked = sorted((root / "projects").glob("*.md"))
+
+    enriched_projects: List[Dict[str, Any]] = []
+    for path in tracked:
+        slug = path.stem
+        fm, _body = storage.read_project(path)
+        if fm.get("tier") == "archived":
+            continue
+        print(f"[enrich] {slug}")
+        updates: Dict[str, Any] = {}
+        for src in SOURCES:
+            if not src.available(keys):
+                continue
+            try:
+                src_updates = src.fetch_watchlist(fm, keys)
+                if src_updates:
+                    updates.update(src_updates)
+            except Exception as exc:
+                print(f"  {src.name}: error {exc}")
+        if updates:
+            merged = storage.update_project_frontmatter(path, updates)
+            enriched_projects.append(merged)
+            print(f"  → {len(updates)} fields updated")
+        else:
+            enriched_projects.append(fm)
+
+    # 2. Write today's snapshot
+    snap_path = snapshots.write_daily_snapshot(enriched_projects)
+    print(f"\n[snapshot] written → {snap_path}")
+
+    # 3. Aggregate trends
+    velocity = aggregate.compute_velocity(root, window_days=7)
+    print(f"[aggregate] velocity computed for {len(velocity)} projects")
+
+    # 4. Scout pass
+    print("\n[scout] discovering new candidates...")
+    scout_candidates: List[Dict[str, Any]] = []
+    for src in SOURCES:
+        if not src.available(keys):
+            continue
+        try:
+            found = src.fetch_scout(keys, config={})
+            if found:
+                print(f"  {src.name}: {len(found)} candidates")
+                scout_candidates.extend(found)
+        except Exception as exc:
+            print(f"  {src.name}: error {exc}")
+
+    # 5. KOL digest
+    print("\n[kols] running KOL digest...")
+    kol_posts: List[Dict[str, Any]] = []
+    xai_key = keys.get("XAI_API_KEY")
+    if xai_key:
+        for kol in kol_lib.load_all():
+            handle = kol.get("handle")
+            posts = fetch_kol_posts(handle, xai_key, since_hours=24, limit=10)
+            kol_posts.extend(posts)
+            print(f"  @{handle}: {len(posts)} posts")
+    else:
+        print("  (skipped — no XAI_API_KEY)")
+
+    # 6. Render reports
+    full_path, brief_path = render.write_daily_reports(
+        projects=enriched_projects,
+        velocity=velocity,
+        scout=scout_candidates,
+        kol_posts=kol_posts,
+    )
+    print(f"\n[report] full  → {full_path}")
+    print(f"[report] brief → {brief_path}")
     return 0
 
 
@@ -217,6 +411,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_daily = sub.add_parser("daily", help="run the full daily pipeline")
     p_daily.set_defaults(func=cmd_daily)
+
+    p_kols = sub.add_parser("kols", help="fetch recent posts from tracked KOLs")
+    p_kols.add_argument("--since-hours", type=int, default=24)
+    p_kols.set_defaults(func=cmd_kols)
+
+    p_research = sub.add_parser("research", help="cited deep-dive via Perplexity")
+    p_research.add_argument("slug", help="project slug to research")
+    p_research.set_defaults(func=cmd_research)
 
     p_add = sub.add_parser("add-project", help="add a new project to the watchlist")
     p_add.add_argument("slug")

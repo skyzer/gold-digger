@@ -1,0 +1,199 @@
+"""xAI (grok) source — KOL feed polling via the Agent Tools API.
+
+Uses the /v1/responses endpoint with the `x_search` tool, which lets grok
+hit X's search directly. Cost per call is typically $0.01-$0.05.
+
+Reference: https://docs.x.ai/docs/guides/tools/overview
+"""
+from __future__ import annotations
+
+import json
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any, Dict, List, Optional
+
+from sources._base import Source
+
+XAI_ENDPOINT = "https://api.x.ai/v1/responses"
+DEFAULT_MODEL = "grok-4.20-reasoning"
+
+
+def _post(body: Dict[str, Any], key: str, timeout: int = 60) -> Optional[Dict[str, Any]]:
+    """POST to xAI, return parsed JSON or None on any failure."""
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(XAI_ENDPOINT, data=data, method="POST")
+    req.add_header("authorization", f"Bearer {key}")
+    req.add_header("content-type", "application/json")
+    req.add_header("user-agent", "gold-digger/0.1")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                return None
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError:
+        return None
+    except (urllib.error.URLError, json.JSONDecodeError, OSError):
+        return None
+
+
+def _extract_message_text(response: Dict[str, Any]) -> Optional[str]:
+    """Pull the final assistant message text out of the responses API output."""
+    output = response.get("output") or []
+    for item in output:
+        if item.get("type") == "message" and item.get("role") == "assistant":
+            content = item.get("content") or []
+            for chunk in content:
+                if chunk.get("type") == "output_text":
+                    return chunk.get("text")
+    return None
+
+
+def _extract_json_array(text: str) -> Optional[List[Any]]:
+    """Best-effort JSON array extractor — handles cases where the model wraps
+    the array in explanatory text or code fences."""
+    if not text:
+        return None
+    # Try direct parse first
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    # Strip code fences
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    if fenced:
+        try:
+            parsed = json.loads(fenced.group(1))
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    # Find first `[` and last `]`
+    start = text.find("[")
+    end = text.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        try:
+            parsed = json.loads(text[start:end + 1])
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+#: Regex for extracting $TICKER mentions from post text. Requires the dollar
+#: sign to disambiguate from English words. 2-10 alphanumeric chars after `$`.
+TICKER_RE = re.compile(r"\$([A-Z][A-Z0-9]{1,9})\b")
+
+
+def extract_tickers(text: str) -> List[str]:
+    """Return unique uppercased ticker symbols mentioned in a post body."""
+    if not text:
+        return []
+    found = TICKER_RE.findall(text)
+    # Preserve order, dedupe
+    seen: List[str] = []
+    for ticker in found:
+        if ticker not in seen:
+            seen.append(ticker)
+    return seen
+
+
+def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 10) -> List[Dict[str, Any]]:
+    """Fetch recent posts by a single KOL. Returns a list of dicts with
+    keys: date (ISO), text, url. Empty list on failure."""
+    if not key or not handle:
+        return []
+    prompt = (
+        f"Find the {limit} most recent posts from @{handle} on X "
+        f"within the last {since_hours} hours. "
+        "For each post return: date (ISO 8601 UTC with Z), text (first 500 chars), "
+        "url (full x.com post URL). "
+        "Return ONLY a JSON array with no surrounding text, markdown, or code fences. "
+        "If no posts found in the window, return []."
+    )
+    body = {
+        "model": DEFAULT_MODEL,
+        "stream": False,
+        "input": [{"role": "user", "content": prompt}],
+        "tools": [{"type": "x_search"}],
+    }
+    response = _post(body, key)
+    if not response:
+        return []
+    text = _extract_message_text(response)
+    if not text:
+        return []
+    posts = _extract_json_array(text)
+    if not posts:
+        return []
+    # Normalise + attach extracted tickers
+    normalised: List[Dict[str, Any]] = []
+    for post in posts:
+        if not isinstance(post, dict):
+            continue
+        body_text = post.get("text") or ""
+        normalised.append({
+            "handle": handle,
+            "date": post.get("date"),
+            "text": body_text,
+            "url": post.get("url"),
+            "tickers": extract_tickers(body_text),
+        })
+    return normalised
+
+
+def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int = 20) -> List[Dict[str, Any]]:
+    """Search X broadly for mentions of a project/ticker (not handle-restricted).
+    Used for mention-count aggregation across all of X."""
+    if not key:
+        return []
+    prompt = (
+        f"Search X for posts mentioning '{query}' in the last {since_hours} hours. "
+        f"Return the {limit} most relevant recent posts. "
+        "For each post return: date (ISO), author (handle), text (first 500 chars), url. "
+        "Return ONLY a JSON array, no prose, no code fences."
+    )
+    body = {
+        "model": DEFAULT_MODEL,
+        "stream": False,
+        "input": [{"role": "user", "content": prompt}],
+        "tools": [{"type": "x_search"}],
+    }
+    response = _post(body, key)
+    if not response:
+        return []
+    text = _extract_message_text(response)
+    if not text:
+        return []
+    parsed = _extract_json_array(text)
+    if not parsed:
+        return []
+    return [p for p in parsed if isinstance(p, dict)]
+
+
+class XaiGrok(Source):
+    name = "xai"
+    requires_keys = ["XAI_API_KEY"]
+
+    def fetch_watchlist(self, project: Dict[str, Any], keys: Dict[str, Optional[str]]) -> Dict[str, Any]:
+        """Count X mentions of this project in the last 7 days."""
+        key = keys.get("XAI_API_KEY")
+        if not key:
+            return {}
+        # Build a search term: prefer ticker, fall back to name
+        ticker = project.get("ticker")
+        name = project.get("name")
+        if ticker:
+            query = f"${ticker} OR {name}" if name else f"${ticker}"
+        elif name:
+            query = name
+        else:
+            return {}
+        mentions = search_x_mentions(query, key, since_hours=168, limit=25)
+        return {
+            "mention_count_7d": len(mentions),
+        }
