@@ -485,6 +485,35 @@ def cmd_discover_kols(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    """Export full Gold Digger state as JSON + JSONL."""
+    from lib import export as export_lib
+    since = getattr(args, "since", None)
+    json_path, jsonl_path = export_lib.write_export(since=since)
+    import json
+    data = json.loads(json_path.read_text())
+    summary = data.get("summary", {})
+    print(f"Exported: {summary.get('total_projects', 0)} projects, "
+          f"{summary.get('total_kols', 0)} KOLs, "
+          f"{summary.get('kol_mentions_recorded', 0)} KOL mentions, "
+          f"{summary.get('daily_reports', 0)} reports")
+    print(f"\n  JSON  → {json_path}")
+    print(f"  JSONL → {jsonl_path}")
+    print(f"\nUsage: cat {json_path} | jq '.projects[] | .name, .mcap'")
+    return 0
+
+
+def cmd_dashboard(_args: argparse.Namespace) -> int:
+    """Generate a static HTML dashboard."""
+    from lib import dashboard, export as export_lib
+    # Ensure export exists first
+    export_lib.write_export()
+    path = dashboard.write_dashboard()
+    print(f"Dashboard → {path}")
+    print(f"\nOpen: open {path}")
+    return 0
+
+
 def cmd_store_trending(_args: argparse.Namespace) -> int:
     """Show what's trending across the accumulated research store."""
     from sources.last30days import store_trending, store_stats
@@ -694,6 +723,13 @@ def cmd_daily(_args: argparse.Namespace) -> int:
     )
     print(f"\n[report] full  → {full_path}")
     print(f"[report] brief → {brief_path}")
+
+    # 9. Export + dashboard (auto-generated every daily run)
+    from lib import export as export_lib, dashboard
+    json_path, jsonl_path = export_lib.write_export()
+    print(f"[export] → {json_path}")
+    dash_path = dashboard.write_dashboard()
+    print(f"[dashboard] → {dash_path}")
     return 0
 
 
@@ -754,6 +790,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_trending = sub.add_parser("trending", help="show trending topics from the research store")
     p_trending.set_defaults(func=cmd_store_trending)
+
+    p_export = sub.add_parser("export", help="export full state as JSON + JSONL")
+    p_export.add_argument("--since", help="only include data from this date (YYYY-MM-DD)")
+    p_export.set_defaults(func=cmd_export)
+
+    p_dash = sub.add_parser("dashboard", help="generate static HTML dashboard")
+    p_dash.set_defaults(func=cmd_dashboard)
 
     args = parser.parse_args(argv)
     return args.func(args)
