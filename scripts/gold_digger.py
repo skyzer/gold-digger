@@ -324,10 +324,66 @@ def cmd_add_project(args: argparse.Namespace) -> int:
     body = schema.project_body_template(fm.get("name") or slug)
     storage.write_project(path, fm, body)
     print(f"\nCreated: {path}")
-    # Show key auto-filled fields
-    for field in ("name", "ticker", "coingecko_id", "price_usd", "mcap", "narrative", "website", "twitter"):
+
+    # --- Auto-research: run ALL enrichment sources + Perplexity DD ---
+    if not args.skip_research:
+        print(f"\nResearching {fm.get('name', slug)}...\n")
+        # Run every source for enrichment (GitHub, XAI mentions, last30days social, DeFiLlama)
+        all_updates: Dict[str, Any] = {}
+        for src in SOURCES:
+            if not src.available(keys):
+                continue
+            try:
+                updates = src.fetch_watchlist(fm, keys)
+                if updates:
+                    all_updates.update(updates)
+                    print(f"  [{src.name}] {len(updates)} fields")
+            except Exception as exc:
+                print(f"  [{src.name}] error: {exc}")
+        if all_updates:
+            fm.update(all_updates)
+            storage.update_project_frontmatter(path, all_updates)
+
+        # Perplexity cited DD brief — the real online research
+        pplx_key = keys.get("PERPLEXITY_API_KEY")
+        if pplx_key:
+            from datetime import datetime, timezone as tz
+            print(f"\n  [perplexity] running cited DD brief...")
+            prompt = project_dd_prompt(fm)
+            result = pplx_research(prompt, pplx_key, model="sonar-pro")
+            if result:
+                text, citations = result
+                date = datetime.now(tz.utc).strftime("%Y-%m-%d")
+                research_dir = storage.data_root() / "research"
+                research_dir.mkdir(parents=True, exist_ok=True)
+                brief_path = research_dir / f"{slug}-{date}.md"
+                brief_lines = [
+                    f"# Gold Digger research brief — {fm.get('name', slug)}",
+                    f"_Date: {date} · Model: sonar-pro · Project: [[{slug}]]_",
+                    "", "## Research brief", "", text,
+                    "", "## Citations", "",
+                ]
+                for i, url in enumerate(citations, 1):
+                    brief_lines.append(f"{i}. {url}")
+                brief_path.write_text("\n".join(brief_lines), encoding="utf-8")
+                print(f"  [perplexity] {len(citations)} citations → {brief_path}")
+                # Show a short preview
+                preview = text[:500].replace("\n", "\n    ")
+                print(f"\n    {preview}")
+                if len(text) > 500:
+                    print(f"\n    ... (full brief in {brief_path})")
+            else:
+                print(f"  [perplexity] no result returned")
+        else:
+            print(f"\n  (Perplexity DD skipped — no PERPLEXITY_API_KEY)")
+
+    # Final summary
+    print(f"\nProject ready: {path}")
+    for field in ("name", "ticker", "coingecko_id", "price_usd", "mcap",
+                   "narrative", "website", "twitter", "github_stars",
+                   "mention_count_7d", "mention_count_30d"):
         val = fm.get(field)
-        if val is not None and val != [] and val != "":
+        if val is not None and val != [] and val != "" and val != 0:
             print(f"  {field}: {val}")
     return 0
 
@@ -638,6 +694,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_add.add_argument("--coingecko-id", dest="coingecko_id")
     p_add.add_argument("--twitter")
     p_add.add_argument("--narrative", help="comma-separated narrative tags")
+    p_add.add_argument("--skip-research", action="store_true", help="skip auto-enrichment + Perplexity DD")
     p_add.set_defaults(func=cmd_add_project)
 
     p_kol_add = sub.add_parser("add-kol", help="add a new KOL to the watchlist")
