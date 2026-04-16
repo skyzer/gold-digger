@@ -274,21 +274,61 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 
 def cmd_add_project(args: argparse.Namespace) -> int:
+    """Add a project. If only a slug/name is given, auto-resolve via CoinGecko."""
+    from sources.coingecko import search_coin, CoinGecko
     slug = args.slug
     path = _slug_to_path(slug)
     if path.exists():
         print(f"Already exists: {path}")
         return 1
+
+    keys = all_keys()
     fm = schema.empty_project(slug, name=args.name or slug)
+
+    # Manual overrides take priority
     if args.coingecko_id:
         fm["coingecko_id"] = args.coingecko_id
     if args.twitter:
         fm["twitter"] = args.twitter
     if args.narrative:
         fm["narrative"] = [n.strip() for n in args.narrative.split(",")]
-    body = schema.project_body_template(fm["name"])
+
+    # Auto-resolve if no coingecko_id was provided explicitly
+    cg_key = keys.get("COINGECKO_API_KEY")
+    if not fm.get("coingecko_id") and cg_key:
+        print(f"Searching CoinGecko for \"{slug}\"...")
+        coin = search_coin(slug, cg_key)
+        if coin:
+            cg_id = coin.get("id") or coin.get("api_symbol")
+            name = coin.get("name") or slug
+            print(f"  Found: {name} (id={cg_id}, symbol={coin.get('symbol')})")
+            fm["coingecko_id"] = cg_id
+            fm["name"] = name
+            fm["ticker"] = (coin.get("symbol") or "").upper() or None
+            # Now do a full enrichment pass using CoinGecko
+            print(f"  Enriching from CoinGecko...")
+            cg_source = CoinGecko()
+            enrichment = cg_source.fetch_watchlist(fm, keys)
+            if enrichment:
+                fm.update(enrichment)
+                print(f"  Auto-filled {len(enrichment)} fields")
+        else:
+            print(f"  Not found on CoinGecko — creating as pre-token project")
+            print(f"  Tip: run `gold-digger research {slug}` for a Perplexity DD brief")
+
+    # Classify narrative if not set manually
+    if not fm.get("narrative") or fm["narrative"] == []:
+        tags = narrative_lib.classify(fm)
+        fm["narrative"] = tags
+
+    body = schema.project_body_template(fm.get("name") or slug)
     storage.write_project(path, fm, body)
-    print(f"Created: {path}")
+    print(f"\nCreated: {path}")
+    # Show key auto-filled fields
+    for field in ("name", "ticker", "coingecko_id", "price_usd", "mcap", "narrative", "website", "twitter"):
+        val = fm.get(field)
+        if val is not None and val != [] and val != "":
+            print(f"  {field}: {val}")
     return 0
 
 

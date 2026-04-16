@@ -99,26 +99,72 @@ def _get(path: str, params: Dict[str, Any], key: str) -> Optional[Any]:
 
 
 def search_coin(query: str, key: str) -> Optional[Dict[str, Any]]:
-    """Resolve a ticker or project name to a CoinGecko coin entry.
+    """Resolve a project name, slug, or ticker to a CoinGecko coin entry.
 
-    Uses `/search?query=<q>`. Returns the best match (first coin result) or
-    None. The caller decides whether to trust it — we don't auto-promote
-    based on search alone.
+    Tries multiple strategies to maximise hit rate:
+      1. Search the query as-is (works for "bittensor", "chainGPT")
+      2. Replace hyphens/underscores with spaces ("fetch-ai" → "fetch ai")
+      3. Try the query uppercased as a ticker symbol ("FET")
+      4. Try just the first word ("fetch")
+
+    Returns the best match or None.
     """
     if not query or not key:
         return None
-    data = _get("/search", {"query": query}, key)
-    if not isinstance(data, dict):
-        return None
-    coins = data.get("coins") or []
-    if not coins:
-        return None
-    # Prefer exact symbol match if the query looks like a ticker (ALLCAPS, 2-10 chars)
-    if query.isupper() and 2 <= len(query) <= 10:
+
+    # Strategy 0: try as a direct CoinGecko ID (handles "fetch-ai", "bittensor" etc.)
+    slug_attempt = query.lower().replace(" ", "-")
+    direct = _get(f"/coins/{slug_attempt}", {"localization": "false", "tickers": "false", "market_data": "false", "community_data": "false", "developer_data": "false"}, key)
+    if isinstance(direct, dict) and direct.get("id"):
+        return {"id": direct["id"], "name": direct.get("name"), "symbol": direct.get("symbol")}
+
+    def _search(q: str) -> Optional[Dict[str, Any]]:
+        data = _get("/search", {"query": q}, key)
+        if not isinstance(data, dict):
+            return None
+        coins = data.get("coins") or []
+        if not coins:
+            return None
+        # Prefer exact symbol match if the query looks like a ticker
+        q_upper = q.upper()
+        if 2 <= len(q_upper) <= 10:
+            for c in coins:
+                if (c.get("symbol") or "").upper() == q_upper:
+                    return c
+        # Prefer exact id match
+        q_lower = q.lower().replace(" ", "-")
         for c in coins:
-            if (c.get("symbol") or "").upper() == query:
+            if c.get("id") == q_lower:
                 return c
-    return coins[0]
+        return coins[0]
+
+    # Strategy 1: as-is
+    result = _search(query)
+    if result:
+        return result
+
+    # Strategy 2: hyphens/underscores → spaces
+    cleaned = query.replace("-", " ").replace("_", " ").strip()
+    if cleaned != query:
+        result = _search(cleaned)
+        if result:
+            return result
+
+    # Strategy 3: try as uppercase ticker
+    upper = query.upper().replace("-", "").replace("_", "").replace(" ", "")
+    if upper != query and 2 <= len(upper) <= 10:
+        result = _search(upper)
+        if result:
+            return result
+
+    # Strategy 4: first word only (handles "fetch-ai" → "fetch")
+    first = query.split("-")[0].split("_")[0].split(" ")[0].strip()
+    if first and first != query and len(first) >= 3:
+        result = _search(first)
+        if result:
+            return result
+
+    return None
 
 
 class CoinGecko(Source):
