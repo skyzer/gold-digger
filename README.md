@@ -33,17 +33,17 @@ One run is a lookup. Seven runs reveal velocity. Thirty runs show which narrativ
 
 Gold Digger is built on top of [last30days](https://github.com/mvanhorn/last30days-skill) — it calls last30days for social + web research and adds a crypto intelligence layer on top. They solve different problems:
 
-| | last30days | Gold Digger |
+| | Gold Digger | last30days |
 |---|---|---|
-| **Core job** | Recall — cast a wide net across social platforms | Intelligence — track what's changing and what the change means |
-| **Time horizon** | Snapshot: "what happened in the last 30 days?" | Compounding: "day 1 vs day 7 vs day 30 vs day 90" |
-| **Memory** | None by default (SQLite store is opt-in) | Everything — snapshots, KOL memory, project files, trends |
-| **Market data** | Zero | CoinGecko price/mcap/supply, DeFiLlama TVL, GitHub commits |
-| **Output** | Raw findings per query | Mention velocity, price-vs-attention divergence, narrative rotation, KOL accuracy scoring |
-| **Entity understanding** | `"circle"` = a string | `"circle"` = ambiguous word, requires crypto context to count as Circle the company |
-| **Structure** | JSON blob per run | Markdown project files with frontmatter schema, readable by Obsidian and other agents |
-| **KOL tracking** | Can search a handle's posts | Persistent memory of every KOL call, first-mention auto-scout, dedup, accuracy backtest |
-| **Who reads it** | The human who ran it | Other agents, dashboards, LLMs, Obsidian — plain files, no API needed |
+| **Core job** | Intelligence — track what's changing and what the change means | Recall — cast a wide net across social platforms |
+| **Time horizon** | Compounding: "day 1 vs day 7 vs day 30 vs day 90" | Snapshot: "what happened in the last 30 days?" |
+| **Memory** | Everything — snapshots, KOL memory, project files, trends | None by default (SQLite store is opt-in) |
+| **Market data** | CoinGecko price/mcap/supply, DeFiLlama TVL, GitHub commits | Zero |
+| **Output** | Mention velocity, price-vs-attention divergence, narrative rotation, KOL accuracy scoring | Raw findings per query |
+| **Entity understanding** | `"circle"` = ambiguous word, requires crypto context to count as Circle the company | `"circle"` = a string |
+| **Structure** | Markdown project files with frontmatter schema, readable by Obsidian and other agents | JSON blob per run |
+| **KOL tracking** | Persistent memory of every KOL call, first-mention auto-scout, dedup, accuracy backtest | Can search a handle's posts |
+| **Who reads it** | Other agents, dashboards, LLMs, Obsidian — plain files, no API needed | The human who ran it |
 
 **last30days is Gold Digger's ears.** It hears what the internet is saying right now. **Gold Digger is the brain** that remembers what the ears heard yesterday, notices when today sounds different, and compounds that into actionable intelligence over weeks and months.
 
