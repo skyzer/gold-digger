@@ -29,6 +29,28 @@ One run is a lookup. Seven runs reveal velocity. Thirty runs show which narrativ
 
 ---
 
+## Gold Digger vs. last30days
+
+Gold Digger is built on top of [last30days](https://github.com/mvanhorn/last30days-skill) — it calls last30days for social + web research and adds a crypto intelligence layer on top. They solve different problems:
+
+| | last30days | Gold Digger |
+|---|---|---|
+| **Core job** | Recall — cast a wide net across social platforms | Intelligence — track what's changing and what the change means |
+| **Time horizon** | Snapshot: "what happened in the last 30 days?" | Compounding: "day 1 vs day 7 vs day 30 vs day 90" |
+| **Memory** | None by default (SQLite store is opt-in) | Everything — snapshots, KOL memory, project files, trends |
+| **Market data** | Zero | CoinGecko price/mcap/supply, DeFiLlama TVL, GitHub commits |
+| **Output** | Raw findings per query | Mention velocity, price-vs-attention divergence, narrative rotation, KOL accuracy scoring |
+| **Entity understanding** | `"circle"` = a string | `"circle"` = ambiguous word, requires crypto context to count as Circle the company |
+| **Structure** | JSON blob per run | Markdown project files with frontmatter schema, readable by Obsidian and other agents |
+| **KOL tracking** | Can search a handle's posts | Persistent memory of every KOL call, first-mention auto-scout, dedup, accuracy backtest |
+| **Who reads it** | The human who ran it | Other agents, dashboards, LLMs, Obsidian — plain files, no API needed |
+
+**last30days is Gold Digger's ears.** It hears what the internet is saying right now. **Gold Digger is the brain** that remembers what the ears heard yesterday, notices when today sounds different, and compounds that into actionable intelligence over weeks and months.
+
+Without last30days, Gold Digger has market data but no social signal. Without Gold Digger, last30days is a firehose that resets every run.
+
+---
+
 ## Quick start
 
 ```bash
@@ -54,14 +76,15 @@ echo 'if [ -f "$HOME/.config/shared/.env" ]; then set -a; . "$HOME/.config/share
 gold-digger setup
 
 # 4. Populate your watchlist (copy-paste-able examples)
+gold-digger add-project unigox                                                              # pre-token, AI-crypto
 gold-digger add-project ai16z        --coingecko-id ai16z           --twitter ai16zdao     --narrative ai-agents
-gold-digger add-project virtuals     --coingecko-id virtual-protocol --twitter virtuals_io  --narrative ai-agents
 gold-digger add-project openserv     --coingecko-id openserv         --twitter openservAI   --narrative ai-agents
 gold-digger add-project bittensor    --coingecko-id bittensor        --twitter opentensor   --narrative ai-infra
 
 # 5. Follow a few KOLs
 gold-digger add-kol DegenSensei --focus ai-crypto,low-cap
 gold-digger add-kol resdegen    --focus ai-crypto,low-cap
+gold-digger add-kol andyyy      --focus ai-crypto
 
 # 6. Run the first daily pipeline
 gold-digger daily
