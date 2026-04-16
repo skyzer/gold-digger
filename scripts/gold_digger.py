@@ -187,22 +187,6 @@ STARTER_PROJECTS = [
         "note": "Pre-token AI-crypto project. Gold Digger tracks X mentions and Perplexity DD while waiting for token launch.",
     },
     {
-        "slug": "ai16z",
-        "name": "ai16z",
-        "coingecko_id": "ai16z",
-        "twitter": "ai16zdao",
-        "narrative": "ai-agents",
-        "note": "AI-agent DAO. One of the earliest AI-agent narrative leaders.",
-    },
-    {
-        "slug": "virtuals",
-        "name": "Virtuals Protocol",
-        "coingecko_id": "virtual-protocol",
-        "twitter": "virtaboreal",
-        "narrative": "ai-agents",
-        "note": "AI-agent launchpad on Base. High volume, high narrative velocity.",
-    },
-    {
         "slug": "openserv",
         "name": "OpenServ",
         "coingecko_id": "openserv",
