@@ -14,12 +14,27 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 
+def _find_repo_root() -> Path:
+    """Walk up from this file to find the repo root (has SKILL.md)."""
+    p = Path(__file__).resolve().parent  # scripts/lib/
+    for _ in range(5):
+        p = p.parent
+        if (p / "SKILL.md").exists():
+            return p
+    return Path.cwd()
+
+
 def data_root() -> Path:
-    """Return the Gold Digger data directory. Overridable via GOLD_DIGGER_DATA."""
+    """Return the Gold Digger data directory.
+
+    Resolution order:
+        1. GOLD_DIGGER_DATA env var (explicit override)
+        2. <repo-root>/data/  (default — lives inside the repo, gitignored)
+    """
     override = os.environ.get("GOLD_DIGGER_DATA")
     if override:
         return Path(override).expanduser()
-    return Path.home() / "Documents" / "GoldDigger"
+    return _find_repo_root() / "data"
 
 
 def ensure_layout() -> Path:
