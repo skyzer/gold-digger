@@ -464,6 +464,43 @@ def cmd_research(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_discover_kols(args: argparse.Namespace) -> int:
+    """Discover new KOLs similar to your tracked ones via --x-related."""
+    from sources.last30days import discover_related_handles
+    kols = kol_lib.load_all()
+    if not kols:
+        print("No KOLs tracked. Run `gold-digger add-kol <handle>` first.")
+        return 1
+    print(f"Discovering KOLs related to {len(kols)} tracked handles...\n")
+    for kol in kols:
+        handle = kol.get("handle")
+        print(f"[@{handle}] searching for related accounts...")
+        payload = discover_related_handles(handle)
+        if payload:
+            print(f"  Got results — check output for new handle suggestions")
+        else:
+            print(f"  (no results)")
+    print("\nReview suggestions above. Add interesting ones with:")
+    print("  gold-digger add-kol <handle> --focus ai-crypto")
+    return 0
+
+
+def cmd_store_trending(_args: argparse.Namespace) -> int:
+    """Show what's trending across the accumulated research store."""
+    from sources.last30days import store_trending, store_stats
+    stats = store_stats()
+    if stats:
+        print("=== Research store stats ===")
+        print(stats)
+    trending = store_trending()
+    if trending:
+        print("=== Trending across all research ===")
+        print(trending)
+    else:
+        print("No trending data yet. Run `gold-digger daily` a few times to build the store.")
+    return 0
+
+
 def cmd_first_mentions(args: argparse.Namespace) -> int:
     """Run the KOL first-mention auto-scout pass in isolation."""
     keys = all_keys()
@@ -638,7 +675,15 @@ def cmd_daily(_args: argparse.Namespace) -> int:
         print(f"  {len(added)} auto-added · {len(unresolved)} unresolved · "
               f"{len(existing)} existing-watchlist · {len(ignored)} ignored")
 
-    # 7. Render reports
+    # 7. Research store trending (compounding intelligence from all prior runs)
+    from sources.last30days import store_trending as _store_trending
+    trending_raw = _store_trending()
+    if trending_raw:
+        print(f"\n[store] trending topics pulled from research lake")
+    else:
+        print(f"\n[store] no trending data yet (builds over time)")
+
+    # 8. Render reports
     full_path, brief_path = render.write_daily_reports(
         projects=enriched_projects,
         velocity=velocity,
@@ -703,6 +748,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_kol_add.add_argument("--weight", type=float, default=1.0)
     p_kol_add.add_argument("--focus", help="comma-separated focus tags (e.g. ai-crypto,low-cap)")
     p_kol_add.set_defaults(func=cmd_add_kol)
+
+    p_discover = sub.add_parser("discover-kols", help="find KOLs similar to your tracked ones")
+    p_discover.set_defaults(func=cmd_discover_kols)
+
+    p_trending = sub.add_parser("trending", help="show trending topics from the research store")
+    p_trending.set_defaults(func=cmd_store_trending)
 
     args = parser.parse_args(argv)
     return args.func(args)

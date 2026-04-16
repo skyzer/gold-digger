@@ -1,8 +1,13 @@
-"""last30days subprocess adapter.
+"""last30days full integration — social, web, prediction markets, video, everything.
 
-Calls the last30days CLI (`uv run --project <path> python scripts/last30days.py`)
-with `--emit=json` and parses the output. Gold Digger uses this for cross-platform
-social + web research (Reddit, HN, YouTube, Polymarket, web).
+Calls last30days CLI with maximum-recall settings:
+  --deep          : higher recall per source
+  --store         : persist ALL findings to SQLite (compounding research lake)
+  --web-backend parallel : fire ALL available search APIs simultaneously
+  --auto-resolve  : discover where a project is discussed
+
+Also wraps store.py (query, search, trending) and watchlist.py for
+cross-session intelligence.
 
 Does NOT reimplement anything — last30days owns the research logic.
 """
@@ -25,7 +30,6 @@ DEFAULT_INSTALL_PATHS = [
 
 def _locate_last30days() -> Optional[Path]:
     """Find the last30days repo on disk. Returns the project root or None."""
-    # Env override
     env_path = os.environ.get("LAST30DAYS_ROOT")
     if env_path:
         p = Path(env_path).expanduser()
@@ -37,18 +41,35 @@ def _locate_last30days() -> Optional[Path]:
     return None
 
 
-def _run(topic: str, extra_args: List[str], timeout: int = 180) -> Optional[Dict[str, Any]]:
-    """Invoke last30days as a subprocess. Returns parsed JSON or None."""
+def _uv_prefix() -> List[str]:
+    root = _locate_last30days()
+    if not root:
+        return []
+    return ["uv", "run", "--project", str(root), "python"]
+
+
+def _run(topic: str, extra_args: List[str], timeout: int = 300) -> Optional[Dict[str, Any]]:
+    """Invoke last30days with full-power flags. Returns parsed JSON or None.
+
+    Every call:
+      --deep              higher recall (was --quick)
+      --store             persist to SQLite for compounding queries
+      --web-backend parallel  fire ALL available search APIs
+      --auto-resolve      discover subreddits/handles automatically
+    """
     root = _locate_last30days()
     if not root:
         return None
     if shutil.which("uv") is None:
         return None
     cmd = [
-        "uv", "run", "--project", str(root),
-        "python", str(root / "scripts" / "last30days.py"),
+        *_uv_prefix(),
+        str(root / "scripts" / "last30days.py"),
         "--emit=json",
-        "--quick",
+        "--deep",
+        "--store",
+        "--web-backend", "parallel",
+        "--auto-resolve",
         *extra_args,
         topic,
     ]
@@ -67,10 +88,9 @@ def _run(topic: str, extra_args: List[str], timeout: int = 180) -> Optional[Dict
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError:
-        # last30days may emit a JSON object on the last non-empty line
         for line in reversed(result.stdout.splitlines()):
             line = line.strip()
-            if line.startswith("{"):
+            if line.startswith("{") or line.startswith("["):
                 try:
                     return json.loads(line)
                 except json.JSONDecodeError:
@@ -78,39 +98,104 @@ def _run(topic: str, extra_args: List[str], timeout: int = 180) -> Optional[Dict
         return None
 
 
+def _run_store(subcommand: str, args: List[str], timeout: int = 30) -> Optional[str]:
+    """Run store.py subcommand, return raw stdout."""
+    root = _locate_last30days()
+    if not root:
+        return None
+    cmd = [*_uv_prefix(), str(root / "scripts" / "store.py"), subcommand, *args]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, env={**os.environ},
+        )
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+# ---------------------------------------------------------------------------
+# Public API — research functions
+# ---------------------------------------------------------------------------
+
 def available() -> bool:
-    """Is last30days installed and runnable?"""
     return _locate_last30days() is not None and shutil.which("uv") is not None
 
 
 def research_topic(topic: str, days: int = 7) -> Optional[Dict[str, Any]]:
-    """Run a generic topic research pass. Returns last30days' JSON payload."""
+    """Run a full-power topic research pass."""
     return _run(topic, [f"--days={days}"])
 
 
 def research_handle(handle: str, days: int = 7) -> Optional[Dict[str, Any]]:
-    """Research a specific X handle via last30days."""
+    """Research a specific X handle."""
     return _run(handle, [f"--days={days}", f"--x-handle={handle}"])
 
 
-class Last30Days(Source):
-    """Social + web research via last30days subprocess.
+def research_with_related(topic: str, related_handles: List[str], days: int = 7) -> Optional[Dict[str, Any]]:
+    """Research a topic + discover content from related X handles."""
+    related_str = ",".join(related_handles)
+    return _run(topic, [f"--days={days}", f"--x-related={related_str}"])
 
-    This is the GENERAL social signal — covers Reddit, HN, YouTube, Polymarket,
-    Bluesky, web search, etc. Complements xai.py which focuses on tracked KOLs.
-    Together they answer: "what are KOLs saying?" (xai) + "what is the internet
-    saying?" (last30days).
+
+def discover_related_handles(handle: str) -> Optional[Dict[str, Any]]:
+    """Use --x-related to find handles similar to a tracked KOL.
+
+    Returns last30days' output which includes discovered handles + their
+    recent posts. Gold Digger extracts handles from the output.
+    """
+    return _run(
+        f"crypto AI agent projects mentioned by @{handle}",
+        [f"--x-related={handle}", "--days=7"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Store API — query the compounding research lake
+# ---------------------------------------------------------------------------
+
+def store_query(topic: str, days: int = 90) -> Optional[str]:
+    """Query accumulated findings for a topic from the SQLite store."""
+    return _run_store("query", [topic, "--days", str(days)])
+
+
+def store_search(query: str) -> Optional[str]:
+    """FTS5 full-text search across ALL historical findings."""
+    return _run_store("search", [query])
+
+
+def store_trending() -> Optional[str]:
+    """What topics are trending across all research runs."""
+    return _run_store("trending", [])
+
+
+def store_stats() -> Optional[str]:
+    """Database statistics: total findings, topics, date range."""
+    return _run_store("stats", [])
+
+
+# ---------------------------------------------------------------------------
+# Source class
+# ---------------------------------------------------------------------------
+
+class Last30Days(Source):
+    """Full social + web + prediction market research via last30days.
+
+    Covers: Reddit (all subreddits), HN, YouTube, Polymarket, Bluesky,
+    TikTok, Instagram, web search (Brave + Exa + Serper in parallel).
+
+    Every call persists to the SQLite store (--store), so the research
+    compounds across days without Gold Digger needing to re-query.
     """
     name = "last30days"
-    requires_keys: List[str] = []  # last30days has its own graceful degradation
+    requires_keys: List[str] = []
 
     def available(self, keys: Dict[str, Optional[str]]) -> bool:
         return available()
 
     def fetch_watchlist(self, project: Dict[str, Any], keys: Dict[str, Optional[str]]) -> Dict[str, Any]:
-        """Pull general social buzz for a project across Reddit, HN, YouTube,
-        Polymarket, web, and X (non-KOL). Returns mention count + top sources."""
-        # Build a broad query: name + ticker + twitter handle
+        """Pull general social buzz across ALL platforms."""
+        from lib import entity as entity_lib
+
         parts = []
         name = project.get("name")
         ticker = project.get("ticker")
@@ -128,10 +213,6 @@ class Last30Days(Source):
         if not payload:
             return {}
 
-        # Extract structured signals from the last30days JSON payload.
-        # The payload shape varies across last30days versions, so we try
-        # multiple keys defensively.
-        updates: Dict[str, Any] = {}
         all_items: List[Dict[str, Any]] = []
         if isinstance(payload, dict):
             for k in ("items", "results", "threads", "findings", "posts"):
@@ -139,45 +220,49 @@ class Last30Days(Source):
                 if isinstance(val, list):
                     all_items.extend(val)
 
-        if all_items:
-            updates["mention_count_30d"] = len(all_items)
-            # Extract platform breakdown for the project body
-            platforms: Dict[str, int] = {}
-            top_sources: List[str] = []
-            for item in all_items:
-                platform = item.get("source") or item.get("platform") or item.get("type") or "unknown"
-                platforms[platform] = platforms.get(platform, 0) + 1
-                url = item.get("url") or item.get("link")
-                if url and len(top_sources) < 5:
-                    top_sources.append(url)
-            # Store top sources as provenance
-            existing = project.get("sources") or []
-            for url in top_sources:
-                if url not in existing:
-                    existing.append(url)
-            if top_sources:
-                updates["sources"] = existing[:20]  # cap at 20
-        else:
-            updates["mention_count_30d"] = 0
+        if not all_items:
+            return {"mention_count_30d": 0}
 
+        # Entity disambiguation: filter false positives
+        project_identity = {
+            "name": name,
+            "ticker": ticker,
+            "twitter": twitter,
+        }
+        verified_items = entity_lib.filter_relevant_mentions(all_items, project_identity)
+
+        updates: Dict[str, Any] = {"mention_count_30d": len(verified_items)}
+        top_sources: List[str] = []
+        for item in verified_items:
+            url = item.get("url") or item.get("link")
+            if url and len(top_sources) < 5:
+                top_sources.append(url)
+        existing = project.get("sources") or []
+        for url in top_sources:
+            if url not in existing:
+                existing.append(url)
+        if top_sources:
+            updates["sources"] = existing[:20]
         return updates
 
     def fetch_scout(self, keys: Dict[str, Optional[str]], config: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """General social scout: search last30days for "ai crypto agents new
-        launches" and surface anything that mentions a project Gold Digger
-        hasn't seen before. Cheap broad net."""
+        """Social scout: trending topics from the store + fresh search."""
         if not available():
             return []
-        payload = research_topic("ai crypto agents new token launch 2026", days=7)
-        if not payload or not isinstance(payload, dict):
-            return []
-        # Try to extract project names/tickers from findings
+        from lib import entity as entity_lib
+
+        # Pull trending from the store (accumulated across all prior runs)
+        trending_raw = store_trending()
         candidates: List[Dict[str, Any]] = []
-        all_items: List[Dict[str, Any]] = []
-        for k in ("items", "results", "threads", "findings", "posts"):
-            val = payload.get(k)
-            if isinstance(val, list):
-                all_items.extend(val)
-        # For v0.5 this is a stub — the items don't have structured project
-        # data. A future version will run NER/ticker extraction over the text.
+        # Trending output is free-form text; extract tickers/names from it
+        if trending_raw:
+            tickers = entity_lib.extract_crypto_entities(trending_raw)
+            for t in tickers[:10]:
+                candidates.append({
+                    "slug": t.lower().replace(" ", "-"),
+                    "name": t,
+                    "narrative": ["ai-crypto"],
+                    "tier": "scout",
+                    "sources": ["last30days-store-trending"],
+                })
         return candidates
