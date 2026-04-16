@@ -1,157 +1,397 @@
 # Gold Digger
 
-Research early crypto-AI projects and generate daily compounding reports. Watchlist enrichment + scout discovery + KOL signal digest, writing markdown that lives in your notes vault.
+**A compounding research engine for early crypto-AI projects.** Daily watchlist enrichment, KOL signal digest, scout discovery, narrative rotation, and Perplexity-backed deep dives — all written as plain markdown so other agents can read it without an API.
 
-**Goal:** surface projects — with or without a token today — that could 10–100x during the next bull run.
+> **Goal:** surface projects — with or without a token today — that could 10–100x during the next bull run, by turning daily research into an auditable data trail that gets smarter every day.
+
+---
+
+## Why "compounding"?
+
+A one-off crypto research session is shallow. The value comes from running Gold Digger every day and letting the data accumulate. Here's what emerges over time:
+
+```mermaid
+flowchart LR
+    D1["Day 1<br/>1 snapshot<br/>baseline"]
+    D7["Day 7<br/>mention velocity<br/>price-vs-attention<br/>divergence"]
+    D30["Day 30<br/>narrative rotation<br/>KOL accuracy<br/>scoring"]
+    D90["Day 90<br/>learning loop<br/>early 10-100x<br/>setups"]
+
+    D1 --> D7 --> D30 --> D90
+
+    style D1 fill:#e8e8e8,stroke:#555,color:#222
+    style D7 fill:#fff2c8,stroke:#c49b00,color:#222
+    style D30 fill:#ffcfa3,stroke:#cc6a00,color:#222
+    style D90 fill:#ff9e9e,stroke:#b40000,color:#222
+```
+
+One run is a lookup. Seven runs reveal velocity. Thirty runs show which narratives are rotating in. Ninety runs start scoring your KOLs by their hit rate. Gold Digger is not a query tool — it's a research loop.
+
+---
 
 ## Quick start
 
 ```bash
 # 1. Install (choose your harness)
 /plugin install github.com/skyzer/gold-digger        # Claude Code
-openclaw install github.com/skyzer/gold-digger        # OpenClaw
-codex plugin install github.com/skyzer/gold-digger    # Codex
-hermes install github.com/skyzer/gold-digger          # Hermes
+openclaw install github.com/skyzer/gold-digger       # OpenClaw
+codex plugin install github.com/skyzer/gold-digger   # Codex
+hermes install github.com/skyzer/gold-digger         # Hermes
 
-# 2. Set your API keys once (see "Where to put keys" below)
-#    Gold Digger finds keys in the environment or in ~/.config/shared/.env
+# 2. Put your API keys in one place (reused by any local tool)
+mkdir -p ~/.config/shared && chmod 700 ~/.config/shared
+cat > ~/.config/shared/.env << 'EOF'
+export COINGECKO_API_KEY="..."
+export XAI_API_KEY="..."
+export PERPLEXITY_API_KEY="..."
+export BRAVE_API_KEY="..."
+export GITHUB_TOKEN="..."
+EOF
+chmod 600 ~/.config/shared/.env
+echo 'if [ -f "$HOME/.config/shared/.env" ]; then set -a; . "$HOME/.config/shared/.env"; set +a; fi' >> ~/.bash_profile
 
-# 3. First run
-gold-digger setup         # interactive: picks location, checks what's available
-gold-digger daily         # full daily run: enrich + scout + report
-gold-digger enrich openserv  # enrich a single project
+# 3. Verify keys + sources
+gold-digger setup
+
+# 4. Populate your watchlist (copy-paste-able examples)
+gold-digger add-project ai16z        --coingecko-id ai16z           --twitter ai16zdao     --narrative ai-agents
+gold-digger add-project virtuals     --coingecko-id virtual-protocol --twitter virtuals_io  --narrative ai-agents
+gold-digger add-project openserv     --coingecko-id openserv         --twitter openservAI   --narrative ai-agents
+gold-digger add-project bittensor    --coingecko-id bittensor        --twitter opentensor   --narrative ai-infra
+
+# 5. Follow a few KOLs
+gold-digger add-kol DegenSensei --focus ai-crypto,low-cap
+gold-digger add-kol resdegen    --focus ai-crypto,low-cap
+
+# 6. Run the first daily pipeline
+gold-digger daily
 ```
 
-Reports land in `$GOLD_DIGGER_DATA/reports/daily/YYYY-MM-DD.md`. If you don't set `GOLD_DIGGER_DATA`, the default is `~/Documents/GoldDigger/`.
+Reports land in `$GOLD_DIGGER_DATA/reports/daily/YYYY-MM-DD.md`. Default data directory is `~/Documents/GoldDigger/` — point Obsidian at it to browse as a knowledge graph.
+
+---
+
+## Architecture — how data flows
+
+```mermaid
+flowchart LR
+    subgraph SRC[Data sources]
+        CG[CoinGecko]
+        DL[DeFiLlama]
+        GH[GitHub]
+        XAI[xAI grok-search]
+        L30[last30days]
+        PPL[Perplexity]
+    end
+
+    subgraph PIPE[Daily pipeline]
+        EN[Enrich watchlist]
+        SN[Write snapshot]
+        SCOUT[Scout discovery]
+        KOLS[KOL digest]
+        FM[First-mention<br/>auto-scout]
+        AGG[Aggregate<br/>velocity + rotation]
+        REND[Render daily +<br/>brief reports]
+    end
+
+    subgraph STORE[Durable markdown store]
+        PR[("projects/*.md<br/>(frontmatter + notes)")]
+        SNAP[("snapshots/*.md<br/>(price + narrative)")]
+        TR[("trends/kol-mentions.md<br/>(KOL memory)")]
+        REP[("reports/daily/*.md<br/>(full + brief)")]
+    end
+
+    CG --> EN
+    DL --> EN
+    GH --> EN
+    XAI --> KOLS
+    L30 --> KOLS
+    PPL -.on-demand.-> EN
+
+    EN --> SN
+    SN --> AGG
+    KOLS --> FM
+    SCOUT --> REND
+    FM --> PR
+    FM --> REND
+    AGG --> REND
+
+    REND --> REP
+    SN --> SNAP
+    FM --> TR
+
+    STORE -.read by other agents.-> CONSUMERS[Other agents<br/>dashboards<br/>LLMs]
+```
+
+Every arrow is a plain-text write. Every store is a flat file. No database, no API layer — any tool that reads markdown or parses an embedded JSON block can consume Gold Digger's output.
+
+---
+
+## Project lifecycle — state machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> discovered: KOL first-mention<br/>or scout find
+    discovered --> scout: Auto-added<br/>(tier:scout)
+    scout --> tracked: You promote<br/>(edit tier in md)
+    tracked --> watched: Cooling signal<br/>(low velocity)
+    watched --> tracked: Heats up again
+    tracked --> archived: You decide
+    watched --> archived: 30d dormant
+    archived --> [*]
+```
+
+Projects flow through tiers based on signal, not buckets. You always have the final say — Gold Digger auto-adds and auto-suggests, but promotion to `tracked` and archiving is a manual frontmatter edit. Every transition is preserved in the project file's git history.
+
+---
+
+## KOL first-mention flow
+
+Tracked KOLs are a source of alpha *if* you can capture every ticker they mention, resolve it to a real project, and dedupe against what you already know. Gold Digger does this every day:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant KOL as Tracked KOL
+    participant XAI as xAI grok-search
+    participant FM as First-mention<br/>classifier
+    participant IGN as Ignore list
+    participant WL as Watchlist
+    participant CG as CoinGecko<br/>/search
+    participant REP as Daily report
+
+    KOL->>XAI: Recent 24h posts
+    XAI->>FM: Extract $TICKER regex
+    FM->>IGN: Is ticker blue-chip / stable / meme?
+    alt Ignored
+        FM->>REP: Silently skip
+    else Active
+        FM->>WL: Matches existing project?
+        alt Already tracked
+            FM->>WL: Append KOL to mentioned_by
+            FM->>REP: "KOL signal on tracked project"
+        else Unknown ticker
+            FM->>CG: Resolve ticker → coin id
+            alt Found
+                FM->>WL: Auto-create scout-tier project
+                FM->>REP: "Auto-added to watchlist"
+            else Not found
+                FM->>REP: "Unresolved — manual review"
+            end
+        end
+    end
+```
+
+The persistent memory file `trends/kol-mentions.md` records every (KOL, ticker) pair so the same mention never re-triggers, and builds a long-term record you can backtest: "which of DegenSensei's first-mentions 2x'd within 30 days?"
+
+---
+
+## Where the value compounds
+
+```mermaid
+flowchart TB
+    subgraph IN[Daily inputs]
+        PR[Price + mcap + supply]
+        SOC[KOL posts]
+        DEV[GitHub commits]
+        NEW[Scout discoveries]
+    end
+
+    subgraph ACC[Accumulates over N days]
+        SNAP[Price history]
+        VEL[Mention velocity]
+        DIV[Price-vs-attention divergence]
+        NAR[Narrative rotation]
+        KACC[KOL accuracy score]
+    end
+
+    subgraph OUT[Emergent signals]
+        EARLY[Early-accumulation<br/>setups]
+        ROT[Narrative rotations<br/>before price moves]
+        WINNERS[KOLs who call<br/>10x winners]
+    end
+
+    PR --> SNAP
+    SOC --> VEL
+    PR --> DIV
+    SOC --> DIV
+    NEW --> NAR
+    SOC --> KACC
+
+    SNAP --> EARLY
+    VEL --> EARLY
+    DIV --> EARLY
+    NAR --> ROT
+    KACC --> WINNERS
+
+    style EARLY fill:#ffd6a5,stroke:#cc6a00
+    style ROT fill:#ffd6a5,stroke:#cc6a00
+    style WINNERS fill:#ffd6a5,stroke:#cc6a00
+```
+
+The orange nodes on the right are what Gold Digger is built to surface. None of them are visible on day 1. All of them emerge as the daily markdown trail grows.
+
+---
 
 ## What it does
 
 **Two modes, both always on:**
 
-1. **Watchlist enrichment** — every project in `projects/*.md` gets refreshed daily: price, mcap, FDV, supply, 24h/7d/30d %, TVL, GitHub commits, follower deltas, KOL mentions, new announcements.
-2. **Scout discovery** — automatically finds new projects you don't know about yet: CoinGecko new listings, DeFiLlama new raises, Cookie.fun / Virtuals launchpad drops, first-mention extraction from your KOL feeds, open-web search for emerging narratives.
+1. **Watchlist enrichment** — every tracked project gets refreshed daily: price, mcap, FDV, 24h/7d/30d %, supply, TVL, GitHub commits, follower deltas, KOL mention count.
+2. **Scout discovery** — finds new projects via CoinGecko new listings, DeFiLlama protocols, KOL first-mentions, and Perplexity/Brave web search. Scout finds enter the watchlist as `tier: scout` for light tracking. You manually promote the interesting ones to `tier: tracked`.
 
-Scout finds enter the watchlist as `tier: scout` (light tracking). You manually promote the interesting ones to `tier: tracked` (full daily enrichment).
+**On-demand tools:**
+- `gold-digger research <slug>` — Perplexity-powered cited DD brief
+- `gold-digger kols [--since-hours N]` — KOL digest over any window
+- `gold-digger first-mentions` — run the first-mention auto-scout in isolation
+- `gold-digger scout` — scout pass without enrichment
 
-**Daily reports** (markdown, two files per day):
-- `YYYY-MM-DD.md` — full report: new discoveries, watchlist deltas, KOL digest, trending narratives, heating-up projects, action queue
-- `YYYY-MM-DD-brief.md` — TL;DR: best find, biggest mover, hottest KOL signal, action item, narrative of the day
+**Daily reports** (two markdown files per day):
+- `YYYY-MM-DD.md` — full report: new discoveries, watchlist deltas, KOL digest, first-mentions, narrative rotation, heating up, action queue
+- `YYYY-MM-DD-brief.md` — 5-bullet TL;DR for quick morning read
 
-**Trends compound across days.** Mention counts, price snapshots, follower deltas roll into `snapshots/` as daily markdown tables. The aggregator computes velocity (today vs 7d avg) and price-vs-attention divergence. That's what makes the reports compounding instead of resetting.
+---
+
+## Designed for other agents to consume
+
+Gold Digger writes plain markdown and embedded JSON. Any LLM, dashboard, CLI, or other agent can read the data directory without going through Gold Digger itself:
+
+```bash
+# List tracked projects
+ls ~/Documents/GoldDigger/projects/
+
+# Filter by narrative
+grep -l "narrative:.*ai-agents" ~/Documents/GoldDigger/projects/*.md
+
+# Feed a project to an LLM for synthesis
+cat ~/Documents/GoldDigger/projects/openserv.md | llm "what should I watch for?"
+
+# Parse yesterday's snapshot CSV block
+awk '/```csv/,/```/' ~/Documents/GoldDigger/snapshots/$(date +%Y-%m-%d).md
+
+# Read the full KOL memory
+cat ~/Documents/GoldDigger/trends/kol-mentions.md
+
+# Check what DegenSensei has been mentioning
+grep "DegenSensei" ~/Documents/GoldDigger/trends/kol-mentions.md
+```
+
+**Project files are the contract.** If you want to add your own findings to a tracked project without breaking Gold Digger's schema, append to the body of the `.md` file — Gold Digger never touches the body on enrichment, only the frontmatter. Your notes compound alongside the automated data.
+
+---
 
 ## API key matrix
 
-Nothing is required. Gold Digger runs with zero keys, just with progressively weaker signal. Add keys to unlock features.
+Nothing is required. Gold Digger runs with zero keys — just with progressively weaker signal. Add keys to unlock features.
 
-| Key / tool | Cost | What it unlocks | What's lost without it |
+| Key / tool | Cost | Unlocks | Lost without it |
 |---|---|---|---|
-| `COINGECKO_API_KEY` | Free Demo / Pro paid | Token price, mcap, FDV, 24h/7d/30d %, supply, exchange listings, new-listing scout | **Severe** — no price data, no new-token scout |
-| `DEFILLAMA` (no key) | Free | TVL, revenue/fees, fundraising rounds DB, new-raises scout | No TVL, no funding round discovery |
-| `GITHUB_TOKEN` (`gh` CLI) | Free | Commits/stars Δ, dev-to-price divergence, new-repo scout in AI-crypto orgs | No GitHub signals |
-| `XAI_API_KEY` | Paid, ~$0.20/call | KOL feeds, first-mention auto-scout, X announcements, sentiment | **Major** — no KOL digest, no X alpha |
-| `PERPLEXITY_API_KEY` | Paid, cheap | Deep-research subagent, cited due-diligence briefs, web-grounded synthesis | Research subagent falls back to raw search — shallower |
-| `BRAVE_API_KEY` | Free 2k/mo | Open-web scout for pre-launch teasers and unannounced projects | Web scout limited |
-| `EXA_API_KEY` | Free 1k/mo | Semantic-search scout ("projects that look like ai16z") | Alt to Brave |
-| `OPENROUTER_API_KEY` | Paid, ~$0.02/run | Alt Perplexity Sonar path | Alt to Perplexity direct |
-| `SCRAPECREATORS_API_KEY` | 10k free | TikTok/IG crypto influencer feeds | Skip for v1 — crypto alpha is on X |
+| `COINGECKO_API_KEY` | Free Demo / Pro paid | Price, mcap, FDV, 24h/7d/30d %, supply, exchange listings, new-listing scout | **Severe** — no price data, no new-token scout |
+| `DEFILLAMA` *(no key)* | Free | TVL, revenue/fees, AI-tagged protocol scout | No TVL, no DeFi scout |
+| `GITHUB_TOKEN` | Free via `gh` | Commits/stars Δ, dev-to-price divergence | No GitHub signals |
+| `XAI_API_KEY` | ~$0.02–0.20/call | KOL feeds, first-mention auto-scout, X announcements | **Major** — no KOL digest, no X alpha |
+| `PERPLEXITY_API_KEY` | Paid, cheap | Cited deep-research for DD subagent | Research falls back to raw search |
+| `BRAVE_API_KEY` | Free 2k/mo | Open-web scout for pre-launch teasers | Web scout limited |
+| `EXA_API_KEY` | Free 1k/mo | Semantic-search scout ("projects like ai16z") | Alt to Brave |
+| `OPENROUTER_API_KEY` | Paid, cheap | Alt Perplexity Sonar path via OpenRouter | Alt to Perplexity direct |
+| `SCRAPECREATORS_API_KEY` | 10k free | TikTok/IG crypto influencers | Skip for v1 |
 | `BSKY_HANDLE` + `BSKY_APP_PASSWORD` | Free | Bluesky chatter | Minor |
-| `yt-dlp` binary | Free (`pip install`) | YouTube crypto channels | No YT signals |
-| `BROWSER_USE_API_KEY` | Paid | v2 feature — autonomous project website DD | Reserved for v2 |
+| `yt-dlp` binary | Free | YouTube crypto channels | No YT signals |
 
-**Minimum recommended:** `COINGECKO_API_KEY` + `XAI_API_KEY` + `BRAVE_API_KEY`. That unlocks the price/KOL/web triad — the core of the value.
+**Minimum recommended:** `COINGECKO_API_KEY` + `XAI_API_KEY` + `BRAVE_API_KEY`. That unlocks the core price/KOL/web triad.
+
+---
 
 ## Where to put keys
 
-Gold Digger looks in this order (first hit wins, never clobbers):
+Gold Digger looks in this order (first hit wins):
 
-1. **Process environment** — anything already `export`ed in your shell. Works everywhere. *This is the primary path.*
-2. **`~/.config/shared/.env`** — **recommended shared location**. Any local tool that reads from here benefits from the same credentials. Gold Digger reads it at runtime; never writes unless you ask.
-3. **`~/.config/last30days/.env`** — if last30days is installed, Gold Digger inherits its keys.
-4. **`~/.config/cowork/.env`** — Anthropic Cowork shared location.
-5. **`~/.config/gold-digger/.env`** — dedicated fallback.
-6. **macOS Keychain** — `gold-digger setup --keychain` writes there; resolver reads via `security find-generic-password`.
-7. **1Password CLI** — if `op` is present and you've set vault references like `op://Personal/GoldDigger/XAI_API_KEY`, the resolver will `op read` them.
+1. **Process environment** — anything `export`ed in your shell. *Primary path.*
+2. **`~/.config/shared/.env`** — **recommended**, reused by any local tool
+3. `~/.config/last30days/.env` — inherit from last30days
+4. `~/.config/cowork/.env` — Anthropic Cowork shared location
+5. `~/.config/gold-digger/.env` — dedicated fallback
+6. macOS Keychain — `gold-digger setup --keychain`
+7. 1Password CLI references — `op://Personal/GoldDigger/KEY`
 
-**Recommended setup** (one-time, reusable across tools):
+Keys never appear in reports, logs, or committed files. Masked (`xai-****…****`) in any debug output.
 
-```bash
-mkdir -p ~/.config/shared && chmod 700 ~/.config/shared
-cat > ~/.config/shared/.env << 'EOF'
-export COINGECKO_API_KEY="..."
-export XAI_API_KEY="..."
-export BRAVE_API_KEY="..."
-export PERPLEXITY_API_KEY="..."
-export GITHUB_TOKEN="..."
-EOF
-chmod 600 ~/.config/shared/.env
-
-# Source it automatically in every shell:
-echo 'if [ -f "$HOME/.config/shared/.env" ]; then set -a; . "$HOME/.config/shared/.env"; set +a; fi' >> ~/.bash_profile
-```
-
-Keys never appear in reports, logs, or committed files. The resolver masks them (`xai-****...****`) if they ever need to show in debug output.
+---
 
 ## Storage layout (Obsidian-friendly)
-
-Everything is markdown. Projects are first-class pages with frontmatter for structured fields and body for notes. Daily reports wiki-link to project pages via `[[reppo]]`.
 
 ```
 $GOLD_DIGGER_DATA/
 ├── projects/
-│   ├── reppo.md            # frontmatter = structured data, body = notes
+│   ├── ai16z.md            # frontmatter = structured data, body = your notes
 │   ├── openserv.md
-│   └── _template.md        # schema template
+│   └── ...
 ├── kols/
 │   ├── degensensei.md
 │   └── resdegen.md
-├── sources.md              # external sources and dashboards
 ├── reports/
 │   └── daily/
-│       ├── 2026-04-15.md         # full
+│       ├── 2026-04-15.md         # full report
 │       └── 2026-04-15-brief.md   # TL;DR
 ├── snapshots/
-│   └── 2026-04-15.md       # markdown table: price + social snapshot
-└── trends/
-    └── velocity.md         # rolling mention-velocity tracker
+│   └── 2026-04-15.md       # human table + CSV block + narrative JSON
+├── trends/
+│   └── kol-mentions.md     # persistent KOL memory
+└── research/
+    └── openserv-2026-04-15.md    # Perplexity cited briefs
 ```
 
-Point Obsidian's vault root at this directory and you have a browsable research graph. Projects backlink to KOLs that mention them; reports backlink to projects.
+Point Obsidian's vault root at this directory and you get a browsable research graph: reports wiki-link `[[project]]`, project pages show Properties panel, backlinks work automatically.
 
-## Schema (per project)
+---
 
-Every project has these frontmatter fields. Missing data is `null`. See `references/schema.md` for the full spec.
+## Project schema (frontmatter fields)
 
-- **Identity:** name, ticker, narrative tags, chains, twitter, github, coingecko_id
-- **Token:** has_token, price_usd, mcap, fdv, %24h/7d/30d, supply, exchanges, tge_date
-- **Funding:** raised_usd, investors, latest_round, valuation
-- **Traction:** twitter followers + Δ, GitHub stars + commits, TVL, mainnet_status
-- **Catalysts:** points_farming, airdrop_eligibility, features_shipped, upcoming_tge
-- **KOL signal:** mentioned_by, mention_count_7d, mention_velocity
-- **Risk:** audit, team_doxxed, vc_unlock_schedule, red_flags
-- **Meta:** tier (tracked / scout), first_added, last_updated, sources
+See [`references/schema.md`](references/schema.md) for the full spec. Summary:
 
-## Extending Gold Digger
+- **Identity** — slug, name, ticker, narrative tags, chains, website, twitter, github, coingecko_id
+- **Token** — has_token, price, mcap, fdv, 24h/7d/30d %, supply, exchanges, tge_date
+- **Funding** — raised_usd, latest_round, valuation, investors
+- **Traction** — twitter followers + Δ, github stars/commits/contributors, tvl, mainnet_status
+- **Catalysts** — points_farming, airdrop_eligible, features_shipped, upcoming_tge
+- **KOL signal** — mentioned_by, mention_count_7d/30d, mention_velocity
+- **Risk** — audit_status, team_doxxed, vc_unlock_schedule, red_flags
+- **Meta** — tier (tracked/scout/archived), first_added, last_updated, sources
 
-Four extension points, all documented in `references/extending.md`:
+---
 
-1. **Data sources** — drop a Python file in `scripts/sources/_custom/` implementing the `Source` base class; auto-discovered on next run.
-2. **Signal extractors** — drop a file in `scripts/extractors/_custom/` that parses source output for new patterns.
-3. **Narrative taxonomy** — edit `references/narratives.md` to add tag patterns for new narratives (intents, restaking, chain abstraction, etc.).
+## Extending
+
+Four extension points, all documented in [`references/extending.md`](references/extending.md):
+
+1. **Data sources** — drop a Python file in `scripts/sources/_custom/` subclassing `Source`. Auto-discovered.
+2. **Signal extractors** — drop a file in `scripts/extractors/_custom/` to parse source output for new patterns.
+3. **Narrative taxonomy** — edit [`references/narratives.md`](references/narratives.md) to add tags, keywords, seeds.
 4. **Custom scoring** — replace `scripts/lib/scoring.py` to weight signals to your taste.
+
+You can also tune the ignore list — edit [`references/ignore.md`](references/ignore.md) to add tickers Gold Digger should silently skip (blue chips, stables, memes, etc.).
+
+---
 
 ## Dependencies
 
 - **Python 3.12+**
-- **[last30days](https://github.com/mvanhorn/last30days-skill)** — social and web research engine. Install first; Gold Digger calls it via subprocess for Reddit / X / HN / YouTube / web signals. Without it, Gold Digger degrades to market data + GitHub only.
+- **[last30days](https://github.com/mvanhorn/last30days-skill)** — social and web research engine. Install first; Gold Digger calls it via subprocess for Reddit / HN / YouTube / web signals. Without it, Gold Digger degrades to market data + GitHub + XAI + Perplexity.
 - `uv` (recommended) or `pip` for Python deps
 - `gh` CLI (optional, for GitHub auth inheritance)
 
+---
+
 ## Roadmap
 
-- **v0.1** — Watchlist enrichment + CoinGecko + scout skeleton *(you are here)*
-- **v0.2** — Full scout pass, KOL digest via last30days, daily markdown reports, trend aggregator
-- **v0.3** — Deep-dive research subagent (Perplexity-powered), Notion export, launchd/cron automation
-- **v1.0** — Cookie.fun / Virtuals native sources, insider wallet tracking, listing announcement watcher, Browser Use autonomous DD
+- **v0.1** — Skeleton, schema, CoinGecko, markdown storage ✅
+- **v0.2** — DeFiLlama, GitHub, XAI KOL, last30days adapter, Perplexity research, daily pipeline ✅
+- **v0.3** — Ignore list, KOL first-mention auto-scout, narrative rotation ✅
+- **v0.4** — Clean Quick Start (no seed/), add-kol command, Mermaid diagrams ✅
+- **v0.5** — Field provenance `.history.jsonl`, `gold-digger export` unified JSON, integration patterns doc
+- **v1.0** — Cookie.fun / Virtuals native sources, insider wallet tracking, CEX listing announcement watcher
+
+---
 
 ## License
 

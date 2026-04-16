@@ -83,25 +83,14 @@ def _slug_to_path(slug: str) -> Path:
     return root / "projects" / f"{slug}.md"
 
 
-def _seed_path_for(slug: str) -> Path:
-    return Path(__file__).resolve().parent.parent / "seed" / "projects" / f"{slug}.md"
-
-
 def _load_or_seed(slug: str) -> Dict[str, Any]:
-    """Load a project from the data directory, falling back to seed/ if it's
-    not present yet. Copies the seed into the data dir on first touch."""
+    """Load a project from the data directory. If it doesn't exist, create
+    a fresh empty template so the caller can still work with it."""
     live = _slug_to_path(slug)
     if live.exists():
         fm, _body = storage.read_project(live)
         fm.setdefault("slug", slug)
         return fm
-    seed = _seed_path_for(slug)
-    if seed.exists():
-        fm, body = storage.read_project(seed)
-        fm.setdefault("slug", slug)
-        storage.write_project(live, fm, body)
-        return fm
-    # Create from empty template
     fm = schema.empty_project(slug)
     body = schema.project_body_template(slug)
     storage.write_project(live, fm, body)
@@ -202,6 +191,20 @@ def cmd_add_project(args: argparse.Namespace) -> int:
     body = schema.project_body_template(fm["name"])
     storage.write_project(path, fm, body)
     print(f"Created: {path}")
+    return 0
+
+
+def cmd_add_kol(args: argparse.Namespace) -> int:
+    """Add a new KOL to the watchlist."""
+    storage.ensure_layout()
+    path = kol_lib.write_kol(
+        handle=args.handle,
+        platform=args.platform,
+        weight=args.weight,
+        focus=[f.strip() for f in (args.focus or "").split(",") if f.strip()],
+    )
+    print(f"Created: {path}")
+    print(f"Edit `{path}` to add notes or change weight. Run `gold-digger kols` to verify.")
     return 0
 
 
@@ -347,14 +350,12 @@ def cmd_daily(_args: argparse.Namespace) -> int:
     root = storage.ensure_layout()
     print(f"Gold Digger daily run — data dir: {root}\n")
 
-    # 1. Enrich all tracked projects — copy any missing seed files first
-    seed_dir = Path(__file__).resolve().parent.parent / "seed" / "projects"
-    for seed_file in seed_dir.glob("*.md"):
-        dest = root / "projects" / seed_file.name
-        if not dest.exists():
-            fm, body = storage.read_project(seed_file)
-            storage.write_project(dest, fm, body)
+    # 1. Enrich all tracked projects. Watchlist lives in the user's data dir,
+    #    populated via `gold-digger add-project` / `add-kol`. Empty on first run.
     tracked = sorted((root / "projects").glob("*.md"))
+    if not tracked:
+        print("Watchlist is empty. Run `gold-digger add-project <slug>` first.")
+        print("See README.md Quick Start for example commands.\n")
 
     enriched_projects: List[Dict[str, Any]] = []
     for path in tracked:
@@ -496,6 +497,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_add.add_argument("--twitter")
     p_add.add_argument("--narrative", help="comma-separated narrative tags")
     p_add.set_defaults(func=cmd_add_project)
+
+    p_kol_add = sub.add_parser("add-kol", help="add a new KOL to the watchlist")
+    p_kol_add.add_argument("handle", help="X/Twitter handle without @")
+    p_kol_add.add_argument("--platform", default="x")
+    p_kol_add.add_argument("--weight", type=float, default=1.0)
+    p_kol_add.add_argument("--focus", help="comma-separated focus tags (e.g. ai-crypto,low-cap)")
+    p_kol_add.set_defaults(func=cmd_add_kol)
 
     args = parser.parse_args(argv)
     return args.func(args)
