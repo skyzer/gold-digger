@@ -175,6 +175,104 @@ def cmd_scout(_args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Default starter projects + KOLs for `gold-digger init`
+# ---------------------------------------------------------------------------
+STARTER_PROJECTS = [
+    {
+        "slug": "unigox",
+        "name": "Unigox",
+        "twitter": "unigox",
+        "narrative": "ai-crypto",
+        "note": "Pre-token AI-crypto project. Gold Digger tracks X mentions and Perplexity DD while waiting for token launch.",
+    },
+    {
+        "slug": "ai16z",
+        "name": "ai16z",
+        "coingecko_id": "ai16z",
+        "twitter": "ai16zdao",
+        "narrative": "ai-agents",
+        "note": "AI-agent DAO. One of the earliest AI-agent narrative leaders.",
+    },
+    {
+        "slug": "virtuals",
+        "name": "Virtuals Protocol",
+        "coingecko_id": "virtual-protocol",
+        "twitter": "virtaboreal",
+        "narrative": "ai-agents",
+        "note": "AI-agent launchpad on Base. High volume, high narrative velocity.",
+    },
+    {
+        "slug": "openserv",
+        "name": "OpenServ",
+        "coingecko_id": "openserv",
+        "twitter": "openservAI",
+        "narrative": "ai-agents",
+        "note": "AI-agent platform. Reference low-cap ($15M entry zone).",
+    },
+]
+
+STARTER_KOLS = [
+    {"handle": "DegenSensei", "focus": "ai-crypto,low-cap"},
+    {"handle": "resdegen", "focus": "ai-crypto,low-cap"},
+]
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """First-time setup: populate the watchlist with starter examples."""
+    root = storage.ensure_layout()
+    existing_projects = list((root / "projects").glob("*.md"))
+    existing_kols = list((root / "kols").glob("*.md"))
+
+    if existing_projects and not args.force:
+        print(f"Watchlist already has {len(existing_projects)} project(s).")
+        print("Run with --force to add starter examples anyway, skipping existing.")
+        if not args.force:
+            return 0
+
+    added_p = 0
+    for p in STARTER_PROJECTS:
+        path = root / "projects" / f"{p['slug']}.md"
+        if path.exists():
+            print(f"  [skip] {p['slug']} (already exists)")
+            continue
+        fm = schema.empty_project(p["slug"], name=p.get("name"))
+        if p.get("coingecko_id"):
+            fm["coingecko_id"] = p["coingecko_id"]
+        if p.get("twitter"):
+            fm["twitter"] = p["twitter"]
+        if p.get("narrative"):
+            fm["narrative"] = [n.strip() for n in p["narrative"].split(",")]
+        body = schema.project_body_template(fm["name"])
+        if p.get("note"):
+            body = body.replace(
+                "_Notes go here. Gold Digger never overwrites the body._",
+                p["note"],
+            )
+        storage.write_project(path, fm, body)
+        print(f"  [added] {p['slug']} — {p.get('name', '')}")
+        added_p += 1
+
+    added_k = 0
+    for k in STARTER_KOLS:
+        path = root / "kols" / f"{k['handle'].lower()}.md"
+        if path.exists():
+            print(f"  [skip] @{k['handle']} (already exists)")
+            continue
+        kol_lib.write_kol(
+            handle=k["handle"],
+            focus=[f.strip() for f in k.get("focus", "").split(",") if f.strip()],
+        )
+        print(f"  [added] @{k['handle']}")
+        added_k += 1
+
+    print(f"\nDone: {added_p} projects + {added_k} KOLs added.")
+    if added_p > 0 or added_k > 0:
+        print(f"Data directory: {root}")
+        print("\nRun `gold-digger daily` to start your first research cycle.")
+    return 0
+
+
 def cmd_add_project(args: argparse.Namespace) -> int:
     slug = args.slug
     path = _slug_to_path(slug)
@@ -467,6 +565,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_setup = sub.add_parser("setup", help="show API key availability and sources")
     p_setup.set_defaults(func=cmd_setup)
+
+    p_init = sub.add_parser("init", help="first-time setup: populate with starter projects + KOLs")
+    p_init.add_argument("--force", action="store_true", help="add starters even if watchlist exists")
+    p_init.set_defaults(func=cmd_init)
 
     p_enrich = sub.add_parser("enrich", help="enrich a single project")
     p_enrich.add_argument("slug", help="project slug (filename without .md)")
