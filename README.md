@@ -127,15 +127,15 @@ Gold Digger decouples **code** from **data**.
 
 ```bash
 # Add to ~/.config/shared/.env (or wherever you keep environment variables)
-export GOLD_DIGGER_DATA="$HOME/research/gold-digger-data"
+export GOLD_DIGGER_DATA="$HOME/research/gold-digger/data"
 ```
 
 Now:
 
-- Claude Code skill → reads/writes to `$HOME/research/gold-digger-data`
-- OpenClaw plugin → reads/writes to `$HOME/research/gold-digger-data`
-- Codex plugin → reads/writes to `$HOME/research/gold-digger-data`
-- Manual CLI runs → reads/writes to `$HOME/research/gold-digger-data`
+- Claude Code skill → reads/writes to `$HOME/research/gold-digger/data`
+- OpenClaw plugin → reads/writes to `$HOME/research/gold-digger/data`
+- Codex plugin → reads/writes to `$HOME/research/gold-digger/data`
+- Manual CLI runs → reads/writes to `$HOME/research/gold-digger/data`
 
 **Why this matters:**
 
