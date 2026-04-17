@@ -131,8 +131,13 @@ def _cmd_setup_interactive() -> int:
     print("  Gold Digger — Interactive Setup")
     print("=" * 60)
     print("\nThis wizard will help you configure your API keys.")
-    print("For each missing key, you'll get a URL to sign up + a prompt.")
-    print("Press Enter to skip any key you don't want to set right now.\n")
+    print("For each missing key, you'll see a URL to sign up + a prompt.")
+    print()
+    print("  • Press Enter (empty input) to SKIP a specific key")
+    print("  • Press Ctrl+C to abort the entire wizard")
+    print("  • You can re-run `gold-digger setup --interactive` later to add")
+    print("    any keys you skipped today")
+    print()
 
     # Step 1: show what's already configured
     print("Checking existing configuration...\n")

@@ -4,8 +4,6 @@
 
 > **Goal:** surface crypto-AI projects — with or without a token today — that could 10–100x during the next bull run, by turning daily research into an auditable data trail that gets smarter every day.
 
-**Keywords:** crypto research · AI agents · token discovery · KOL tracking · airdrop farming · low-cap altcoin research · early-stage crypto · narrative rotation · Bittensor · Virtuals · ai16z · OpenServ · crypto alpha · on-chain research
-
 **KOL** = _Key Opinion Leader_ — a crypto influencer (typically on X/Twitter) whose calls and first-mentions move retail attention and often precede price discovery. Gold Digger's job is to capture every ticker your tracked KOLs mention, dedupe, auto-scout projects they surface, and score their accuracy over time.
 
 ---
@@ -98,7 +96,7 @@ Reports land in `data/reports/daily/YYYY-MM-DD.md` inside the repo. The `data/` 
 
 ### Where your API keys live
 
-Gold Digger checks **14 locations** for API keys, so it'll find them wherever you or your harness stored them:
+Gold Digger checks **17 locations** for API keys, so it'll find them wherever you or your harness stored them:
 
 1. Process environment (exported in current shell)
 2. `~/.config/shared/.env` — **recommended**, reused by other tools
@@ -108,9 +106,11 @@ Gold Digger checks **14 locations** for API keys, so it'll find them wherever yo
 6. `~/.config/hermes/.env` — Hermes harness storage
 7. `~/.config/openclaw/.env` — OpenClaw harness storage
 8. `~/.config/codex/.env` — Codex harness storage
-9–13. Shell profiles: `~/.bash_profile`, `~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zshenv` — `export KEY=value` lines are parsed directly
-14. macOS Keychain (optional, via `security` CLI)
-15. 1Password CLI (if you use `op://...` references)
+9–13. Shell profiles: `~/.bash_profile`, `~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zshenv` — `export KEY=value` lines parsed directly
+14. `~/.claude/settings.json` → `env` block — Claude Code's native env storage
+15. `~/.claude.json` → `env` block — alternate Claude config path
+16. macOS Keychain (optional, via `security` CLI)
+17. 1Password CLI (if you use `op://...` references)
 
 If `gold-digger install` or `setup --interactive` can't find your keys, run `gold-digger doctor` and it'll tell you exactly which paths were searched.
 

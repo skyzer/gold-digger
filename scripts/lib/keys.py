@@ -14,6 +14,7 @@ Keys are masked in any string representation.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -37,6 +38,14 @@ SEARCH_PATHS: List[Path] = [
     Path.home() / ".profile",
     Path.home() / ".zshrc",
     Path.home() / ".zshenv",
+]
+
+# JSON config paths — parsed for {"env": {KEY: value}} blocks.
+# Claude Code stores env vars in its settings.json under the "env" key.
+JSON_SEARCH_PATHS: List[Path] = [
+    Path.home() / ".claude" / "settings.json",
+    Path.home() / ".claude.json",
+    Path.home() / ".claude" / "settings.local.json",
 ]
 
 # Known keys and what they unlock. Used by `setup` to report availability.
@@ -80,6 +89,24 @@ def _parse_env_file(path: Path) -> Dict[str, str]:
     except (OSError, UnicodeDecodeError):
         return {}
     return result
+
+
+def _parse_json_env(path: Path) -> Dict[str, str]:
+    """Extract API keys from a JSON config file.
+
+    Looks for an `env` key at the top level (Claude Code / Claude CLI pattern).
+    Only extracts string values — skips nested objects.
+    """
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    env = data.get("env") if isinstance(data, dict) else None
+    if not isinstance(env, dict):
+        return {}
+    return {k: str(v) for k, v in env.items() if isinstance(v, (str, int, float, bool))}
 
 
 def _try_keychain(name: str) -> Optional[str]:
@@ -151,7 +178,19 @@ def resolve_key(name: str) -> Optional[str]:
             else:
                 return val
 
-    # 3. Keychain
+    # 3. JSON config files (Claude settings.json etc.)
+    for path in JSON_SEARCH_PATHS:
+        parsed = _parse_json_env(path)
+        if name in parsed and parsed[name]:
+            val = parsed[name]
+            if val.startswith("op://"):
+                resolved = _try_onepassword(val)
+                if resolved:
+                    return resolved
+            else:
+                return val
+
+    # 4. Keychain
     keychain_value = _try_keychain(name)
     if keychain_value:
         return keychain_value
@@ -180,6 +219,16 @@ def resolved_source(name: str) -> Tuple[Optional[str], str]:
             return env_val, "env"
     for path in SEARCH_PATHS:
         parsed = _parse_env_file(path)
+        if name in parsed and parsed[name]:
+            val = parsed[name]
+            if val.startswith("op://"):
+                resolved = _try_onepassword(val)
+                if resolved:
+                    return resolved, f"{path}→1password"
+            else:
+                return val, str(path)
+    for path in JSON_SEARCH_PATHS:
+        parsed = _parse_json_env(path)
         if name in parsed and parsed[name]:
             val = parsed[name]
             if val.startswith("op://"):
