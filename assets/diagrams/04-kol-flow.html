@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gold Digger — KOL First-Mention Flow</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #fb7185; border-radius: 50%; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 900px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.rose { background: #fb7185; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-row">
+        <div class="pulse-dot"></div>
+        <h1>Gold Digger — KOL First-Mention Flow</h1>
+      </div>
+      <p class="subtitle">From KOL post to watchlist entry, in five decision gates</p>
+    </div>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 660">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+          </marker>
+          <marker id="arrow-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#34d399" />
+          </marker>
+          <marker id="arrow-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24" />
+          </marker>
+          <marker id="arrow-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185" />
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <rect width="100%" height="100%" fill="url(#grid)" />
+
+        <!-- Start: KOL post -->
+        <rect x="30" y="290" width="160" height="70" rx="6" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="110" y="314" fill="white" font-size="12" font-weight="600" text-anchor="middle">Tracked KOL</text>
+        <text x="110" y="332" fill="#94a3b8" font-size="9" text-anchor="middle">@DegenSensei posts:</text>
+        <text x="110" y="350" fill="#fb7185" font-size="9" text-anchor="middle" font-weight="500">"$TAO looking good"</text>
+
+        <!-- Step 1: Extract -->
+        <rect x="240" y="285" width="150" height="80" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="315" y="308" fill="white" font-size="11" font-weight="600" text-anchor="middle">xAI grok-search</text>
+        <text x="315" y="325" fill="#94a3b8" font-size="9" text-anchor="middle">pull last 24h posts</text>
+        <text x="315" y="340" fill="#94a3b8" font-size="9" text-anchor="middle">regex extract</text>
+        <text x="315" y="355" fill="#34d399" font-size="9" text-anchor="middle" font-weight="500">→ $TAO, $SERV</text>
+
+        <!-- Decision gate 1: Ignore list -->
+        <polygon points="460,325 540,285 620,325 540,365" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="540" y="320" fill="white" font-size="10" font-weight="600" text-anchor="middle">Ignore list?</text>
+        <text x="540" y="336" fill="#94a3b8" font-size="8" text-anchor="middle">BTC, USDC, CRCL,</text>
+        <text x="540" y="348" fill="#94a3b8" font-size="8" text-anchor="middle">stables, memes</text>
+
+        <!-- Gate 1 → ignored (down) -->
+        <rect x="480" y="420" width="120" height="50" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="540" y="442" fill="white" font-size="10" font-weight="600" text-anchor="middle">ignored</text>
+        <text x="540" y="458" fill="#94a3b8" font-size="9" text-anchor="middle">silently skipped</text>
+        <line x1="540" y1="365" x2="540" y2="418" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrow-rose)"/>
+        <text x="572" y="395" fill="#fb7185" font-size="9">yes</text>
+
+        <!-- Decision gate 2: Seen before -->
+        <polygon points="660,325 740,285 820,325 740,365" fill="rgba(136, 19, 55, 0.4)" stroke="#fb7185" stroke-width="1.5"/>
+        <text x="740" y="318" fill="white" font-size="10" font-weight="600" text-anchor="middle">Seen before?</text>
+        <text x="740" y="334" fill="#94a3b8" font-size="8" text-anchor="middle">check KOL memory:</text>
+        <text x="740" y="348" fill="#94a3b8" font-size="8" text-anchor="middle">(handle, ticker) pair</text>
+
+        <!-- Gate 1 → Gate 2 (no) -->
+        <line x1="620" y1="325" x2="658" y2="325" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <text x="638" y="315" fill="#34d399" font-size="9" text-anchor="middle">no</text>
+
+        <!-- Gate 2 → already (down to memory) -->
+        <rect x="680" y="420" width="120" height="50" rx="6" fill="rgba(30, 41, 59, 0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+        <text x="740" y="442" fill="white" font-size="10" font-weight="600" text-anchor="middle">dedup skip</text>
+        <text x="740" y="458" fill="#94a3b8" font-size="9" text-anchor="middle">already-processed</text>
+        <line x1="740" y1="365" x2="740" y2="418" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrow-rose)"/>
+        <text x="770" y="395" fill="#fb7185" font-size="9">yes</text>
+
+        <!-- Decision gate 3: In watchlist -->
+        <polygon points="860,325 935,285 950,325 935,365" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5" opacity="0"/>
+        <polygon points="830,400 910,360 975,400 910,440" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="903" y="395" fill="white" font-size="10" font-weight="600" text-anchor="middle">In watchlist?</text>
+        <text x="903" y="410" fill="#94a3b8" font-size="8" text-anchor="middle">ticker matches</text>
+        <text x="903" y="422" fill="#94a3b8" font-size="8" text-anchor="middle">existing project?</text>
+
+        <!-- Gate 2 → Gate 3 (no, curve down-right) -->
+        <path d="M 820 325 Q 870 370 870 385" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <text x="858" y="362" fill="#34d399" font-size="9">no</text>
+
+        <!-- Gate 3 → existing-watchlist -->
+        <rect x="810" y="490" width="190" height="60" rx="6" fill="rgba(76, 29, 149, 0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+        <text x="905" y="512" fill="white" font-size="11" font-weight="600" text-anchor="middle">existing-watchlist</text>
+        <text x="905" y="530" fill="#94a3b8" font-size="9" text-anchor="middle">append to mentioned_by</text>
+        <text x="905" y="544" fill="#a78bfa" font-size="9" text-anchor="middle">attribution recorded</text>
+        <line x1="905" y1="440" x2="905" y2="488" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <text x="925" y="465" fill="#a78bfa" font-size="9">yes</text>
+
+        <!-- Gate 4: CoinGecko search -->
+        <polygon points="540,480 620,440 700,480 620,520" fill="rgba(120, 53, 15, 0.4)" stroke="#fbbf24" stroke-width="1.5"/>
+        <text x="620" y="475" fill="white" font-size="10" font-weight="600" text-anchor="middle">CoinGecko</text>
+        <text x="620" y="490" fill="white" font-size="10" font-weight="600" text-anchor="middle">/search match?</text>
+        <text x="620" y="505" fill="#94a3b8" font-size="8" text-anchor="middle">resolve ticker → id</text>
+
+        <!-- Gate 3 → Gate 4 (no, curve left-down) -->
+        <path d="M 830 400 Q 780 460 700 480" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <text x="770" y="445" fill="#fbbf24" font-size="9">no</text>
+
+        <!-- Gate 4 → first-mention-added -->
+        <rect x="320" y="560" width="210" height="70" rx="6" fill="rgba(6, 78, 59, 0.4)" stroke="#34d399" stroke-width="1.5"/>
+        <text x="425" y="584" fill="white" font-size="11" font-weight="600" text-anchor="middle">first-mention-added</text>
+        <text x="425" y="602" fill="#94a3b8" font-size="9" text-anchor="middle">auto-create projects/bittensor.md</text>
+        <text x="425" y="616" fill="#34d399" font-size="9" text-anchor="middle">tier: scout · discovered_via: @handle</text>
+        <path d="M 600 520 Q 500 555 460 558" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <text x="540" y="545" fill="#34d399" font-size="9">yes</text>
+
+        <!-- Gate 4 → unresolved -->
+        <rect x="570" y="560" width="210" height="70" rx="6" fill="rgba(251, 146, 60, 0.3)" stroke="#fb923c" stroke-width="1.5"/>
+        <text x="675" y="584" fill="white" font-size="11" font-weight="600" text-anchor="middle">unresolved</text>
+        <text x="675" y="602" fill="#94a3b8" font-size="9" text-anchor="middle">not on CoinGecko yet</text>
+        <text x="675" y="616" fill="#fb923c" font-size="9" text-anchor="middle">surface for manual review</text>
+        <path d="M 640 520 Q 670 545 675 558" fill="none" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arrow-amber)"/>
+        <text x="695" y="545" fill="#fb923c" font-size="9">no</text>
+
+        <!-- Persistent memory box (bottom) -->
+        <rect x="30" y="470" width="240" height="120" rx="8" fill="rgba(76, 29, 149, 0.2)" stroke="#a78bfa" stroke-width="1" stroke-dasharray="5,3"/>
+        <text x="150" y="492" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">Persistent KOL Memory</text>
+        <text x="150" y="510" fill="#94a3b8" font-size="9" text-anchor="middle">trends/kol-mentions.md</text>
+        <text x="150" y="526" fill="#64748b" font-size="8" text-anchor="middle">| date | kol | ticker | action |</text>
+        <text x="150" y="541" fill="#64748b" font-size="8" text-anchor="middle">| 2026-04-18 | DegenSensei | TAO | added |</text>
+        <text x="150" y="555" fill="#64748b" font-size="8" text-anchor="middle">| 2026-04-17 | resdegen | SERV | existing |</text>
+        <text x="150" y="578" fill="#a78bfa" font-size="8" text-anchor="middle" font-style="italic">never forgets — fuels dedup + backtest</text>
+
+        <!-- Pipeline arrows from outcomes back to memory -->
+        <path d="M 425 630 Q 270 620 180 590" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,3"/>
+        <path d="M 675 630 Q 400 640 180 590" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,3"/>
+        <path d="M 540 470 Q 340 480 180 510" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,3"/>
+        <path d="M 740 470 Q 440 490 180 510" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,3"/>
+        <path d="M 905 550 Q 500 610 180 590" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="3,3"/>
+        <text x="270" y="480" fill="#a78bfa" font-size="8" opacity="0.8">all outcomes recorded →</text>
+
+        <!-- KOL post to extract -->
+        <line x1="192" y1="325" x2="238" y2="325" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arrow-rose)"/>
+
+        <!-- Extract to gate 1 -->
+        <line x1="392" y1="325" x2="458" y2="325" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-emerald)"/>
+        <text x="425" y="315" fill="#94a3b8" font-size="9" text-anchor="middle">per ticker</text>
+
+        <!-- Header labels -->
+        <text x="110" y="120" fill="#fb7185" font-size="10" font-weight="600" text-anchor="middle">INPUT</text>
+        <text x="315" y="120" fill="#34d399" font-size="10" font-weight="600" text-anchor="middle">EXTRACT</text>
+        <text x="540" y="120" fill="#fb7185" font-size="10" font-weight="600" text-anchor="middle">GATE 1: IGNORE</text>
+        <text x="740" y="120" fill="#fb7185" font-size="10" font-weight="600" text-anchor="middle">GATE 2: DEDUP</text>
+        <text x="903" y="148" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">GATE 3: WATCHLIST</text>
+        <text x="620" y="148" fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle">GATE 4: RESOLVE</text>
+
+        <line x1="40" y1="130" x2="960" y2="130" stroke="#1e293b" stroke-width="0.5" stroke-dasharray="2,2"/>
+
+        <!-- Top: flow summary -->
+        <text x="500" y="30" fill="white" font-size="13" font-weight="600" text-anchor="middle">5 classification outcomes per ticker mention</text>
+        <text x="500" y="50" fill="#94a3b8" font-size="10" text-anchor="middle">ignored · dedup-skip · existing-watchlist · first-mention-added · unresolved</text>
+      </svg>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-header"><div class="card-dot rose"></div><h3>Gate 1 — Ignore list</h3></div>
+        <ul>
+          <li>• BTC, ETH, SOL, stables</li>
+          <li>• CRCL, DOGE, memes</li>
+          <li>• User-editable markdown</li>
+          <li>• Hard skip — no enrichment</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot violet"></div><h3>Gate 2 — Dedup memory</h3></div>
+        <ul>
+          <li>• trends/kol-mentions.md</li>
+          <li>• (handle, ticker) pair key</li>
+          <li>• Never re-triggers</li>
+          <li>• Fuels accuracy backtest</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot emerald"></div><h3>Gate 3 — Watchlist hit</h3></div>
+        <ul>
+          <li>• Ticker matches tracked proj</li>
+          <li>• Append KOL to mentioned_by</li>
+          <li>• Attribution recorded</li>
+          <li>• No new file created</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-dot amber"></div><h3>Gate 4 — CG resolve</h3></div>
+        <ul>
+          <li>• 5-strategy search</li>
+          <li>• Match → auto-scout file</li>
+          <li>• No match → unresolved</li>
+          <li>• Manual review surfaced</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footer">Gold Digger · KOL first-mention pipeline · github.com/skyzer/gold-digger</p>
+  </div>
+</body>
+</html>

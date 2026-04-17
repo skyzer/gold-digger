@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gold Digger — Diagram Index</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; margin-bottom: 0.5rem; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-bottom: 2rem; }
+    .card { display: block; background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; margin-bottom: 1rem; text-decoration: none; color: white; transition: border-color 0.2s; }
+    .card:hover { border-color: #fbbf24; }
+    .card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.375rem; }
+    .card p { color: #94a3b8; font-size: 0.813rem; }
+    .num { color: #fbbf24; font-weight: 700; margin-right: 0.5rem; }
+    .footer { margin-top: 2rem; color: #475569; font-size: 0.75rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Gold Digger — Diagram Index</h1>
+    <p class="subtitle">Open each in browser → screenshot or export to PNG/SVG → embed in README.</p>
+
+    <a href="01-compounding.html" class="card">
+      <h3><span class="num">01</span>Why Compounding</h3>
+      <p>Hero diagram: Day 1 → Day 7 → Day 30 → Day 90 payoff timeline. Escalating colors from slate to rose.</p>
+    </a>
+
+    <a href="02-architecture.html" class="card">
+      <h3><span class="num">02</span>Architecture Flow</h3>
+      <p>4-column flow: Data sources → Daily pipeline → Durable markdown store → Consumers. Feedback loop for compounding.</p>
+    </a>
+
+    <a href="03-lifecycle.html" class="card">
+      <h3><span class="num">03</span>Project Lifecycle</h3>
+      <p>State machine: discovered → scout → tracked → archived → deleted. Entry points + promotion flow.</p>
+    </a>
+
+    <a href="04-kol-flow.html" class="card">
+      <h3><span class="num">04</span>KOL First-Mention Flow</h3>
+      <p>5-gate pipeline: extract → ignore check → dedup → watchlist hit → CoinGecko resolve. Persistent memory at bottom.</p>
+    </a>
+
+    <a href="05-value-compounding.html" class="card">
+      <h3><span class="num">05</span>Where Value Compounds</h3>
+      <p>3-tier pyramid: Daily inputs (cyan) → Accumulated signals (violet) → Emergent alpha (orange). The whole thesis.</p>
+    </a>
+
+    <p class="footer">Applied Cocoon AI's architecture-diagram skill design system · github.com/skyzer/gold-digger</p>
+  </div>
+</body>
+</html>
