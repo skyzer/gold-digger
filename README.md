@@ -114,6 +114,41 @@ Gold Digger checks **17 locations** for API keys, so it'll find them wherever yo
 
 If `gold-digger install` or `setup --interactive` can't find your keys, run `gold-digger doctor` and it'll tell you exactly which paths were searched.
 
+### Where your research lives — and how to migrate between agents
+
+Gold Digger decouples **code** from **data**.
+
+- **Code** is wherever the harness installed the plugin (Claude Code's `~/.claude/skills/`, OpenClaw's plugin cache, a manual git clone, etc.). Code gets reinstalled or overwritten freely.
+- **Data** is a single directory you control — projects, KOLs, snapshots, reports, the SQLite research lake. Never touched by plugin updates.
+
+**By default**, data lives at `<repo>/data/` — convenient if you only use one install.
+
+**To share one dataset across multiple harnesses** (strongly recommended — this is the whole point of the cross-harness design), point every install at the same location via `GOLD_DIGGER_DATA`:
+
+```bash
+# Add to ~/.config/shared/.env (or wherever you keep environment variables)
+export GOLD_DIGGER_DATA="$HOME/research/gold-digger-data"
+```
+
+Now:
+
+- Claude Code skill → reads/writes to `$HOME/research/gold-digger-data`
+- OpenClaw plugin → reads/writes to `$HOME/research/gold-digger-data`
+- Codex plugin → reads/writes to `$HOME/research/gold-digger-data`
+- Manual CLI runs → reads/writes to `$HOME/research/gold-digger-data`
+
+**Why this matters:**
+
+- **Switch agents freely.** Install Gold Digger in Claude Code today, run daily cycles for a week, then switch to OpenClaw for its scheduling. Research continues unbroken — no import/export, no data migration.
+- **Multiple agents, one dataset.** OpenClaw runs the 2am daily on a cron. You manually trigger `gold-digger research <slug>` from Claude Code on demand. Both write to the same files.
+- **Back up once, restore anywhere.** The entire portable state is one directory:
+  ```bash
+  tar czf gold-digger-backup-$(date +%Y%m%d).tar.gz "$GOLD_DIGGER_DATA"
+  ```
+- **Survive plugin wipes.** Any harness can reinstall, update, or delete its plugin cache without touching your data.
+
+**Verify what's being used:** `gold-digger doctor` prints the resolved data directory. If it shows the wrong path, the harness didn't pass the env var — fix it there, not in Gold Digger.
+
 ---
 
 ## Architecture — how data flows
@@ -303,22 +338,22 @@ Gold Digger writes plain markdown and embedded JSON. Any LLM, dashboard, CLI, or
 
 ```bash
 # List tracked projects
-ls ~/Documents/GoldDigger/projects/
+ls "$GOLD_DIGGER_DATA/projects/"
 
 # Filter by narrative
-grep -l "narrative:.*ai-agents" ~/Documents/GoldDigger/projects/*.md
+grep -l "narrative:.*ai-agents" "$GOLD_DIGGER_DATA/projects/"*.md
 
 # Feed a project to an LLM for synthesis
-cat ~/Documents/GoldDigger/projects/openserv.md | llm "what should I watch for?"
+cat "$GOLD_DIGGER_DATA/projects/openserv.md" | llm "what should I watch for?"
 
-# Parse yesterday's snapshot CSV block
-awk '/```csv/,/```/' ~/Documents/GoldDigger/snapshots/$(date +%Y-%m-%d).md
+# Parse today's snapshot CSV block
+awk '/```csv/,/```/' "$GOLD_DIGGER_DATA/snapshots/$(date +%Y-%m-%d).md"
 
 # Read the full KOL memory
-cat ~/Documents/GoldDigger/trends/kol-mentions.md
+cat "$GOLD_DIGGER_DATA/trends/kol-mentions.md"
 
 # Check what DegenSensei has been mentioning
-grep "DegenSensei" ~/Documents/GoldDigger/trends/kol-mentions.md
+grep "DegenSensei" "$GOLD_DIGGER_DATA/trends/kol-mentions.md"
 ```
 
 **Project files are the contract.** If you want to add your own findings to a tracked project without breaking Gold Digger's schema, append to the body of the `.md` file — Gold Digger never touches the body on enrichment, only the frontmatter. Your notes compound alongside the automated data.
