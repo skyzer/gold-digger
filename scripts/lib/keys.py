@@ -22,10 +22,21 @@ from typing import Dict, List, Optional, Tuple
 
 # Canonical search order. The first file that contains a key wins.
 SEARCH_PATHS: List[Path] = [
+    # Dedicated config dirs (recommended)
     Path.home() / ".config" / "shared" / ".env",
     Path.home() / ".config" / "last30days" / ".env",
     Path.home() / ".config" / "cowork" / ".env",
     Path.home() / ".config" / "gold-digger" / ".env",
+    # Harness-specific config dirs (generous scan)
+    Path.home() / ".config" / "hermes" / ".env",
+    Path.home() / ".config" / "openclaw" / ".env",
+    Path.home() / ".config" / "codex" / ".env",
+    # Shell profiles — users who `export KEY=value` directly in their shell rc
+    Path.home() / ".bash_profile",
+    Path.home() / ".bashrc",
+    Path.home() / ".profile",
+    Path.home() / ".zshrc",
+    Path.home() / ".zshenv",
 ]
 
 # Known keys and what they unlock. Used by `setup` to report availability.

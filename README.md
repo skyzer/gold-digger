@@ -2,7 +2,11 @@
 
 **A compounding research engine for early crypto-AI projects.** Daily watchlist enrichment, KOL signal digest, scout discovery, narrative rotation, and Perplexity-backed deep dives — all written as plain markdown so other agents can read it without an API.
 
-> **Goal:** surface projects — with or without a token today — that could 10–100x during the next bull run, by turning daily research into an auditable data trail that gets smarter every day.
+> **Goal:** surface crypto-AI projects — with or without a token today — that could 10–100x during the next bull run, by turning daily research into an auditable data trail that gets smarter every day.
+
+**Keywords:** crypto research · AI agents · token discovery · KOL tracking · airdrop farming · low-cap altcoin research · early-stage crypto · narrative rotation · Bittensor · Virtuals · ai16z · OpenServ · crypto alpha · on-chain research
+
+**KOL** = _Key Opinion Leader_ — a crypto influencer (typically on X/Twitter) whose calls and first-mentions move retail attention and often precede price discovery. Gold Digger's job is to capture every ticker your tracked KOLs mention, dedupe, auto-scout projects they surface, and score their accuracy over time.
 
 ---
 
@@ -51,7 +55,7 @@ Without last30days, Gold Digger has market data but no social signal. Without Go
 
 ---
 
-## Quick start
+## Quick start — the fastest path
 
 ```bash
 # 1. Install (choose your harness)
@@ -60,37 +64,55 @@ openclaw install github.com/skyzer/gold-digger       # OpenClaw
 codex plugin install github.com/skyzer/gold-digger   # Codex
 hermes install github.com/skyzer/gold-digger         # Hermes
 
-# 2. Put your API keys in one place (reused by any local tool)
-mkdir -p ~/.config/shared && chmod 700 ~/.config/shared
-cat > ~/.config/shared/.env << 'EOF'
-export COINGECKO_API_KEY="..."
-export XAI_API_KEY="..."
-export PERPLEXITY_API_KEY="..."
-export BRAVE_API_KEY="..."
-export GITHUB_TOKEN="..."
-EOF
-chmod 600 ~/.config/shared/.env
-echo 'if [ -f "$HOME/.config/shared/.env" ]; then set -a; . "$HOME/.config/shared/.env"; set +a; fi' >> ~/.bash_profile
+# 2. One-shot bootstrap — installs last30days, prompts for your keys,
+#    populates a starter watchlist, and offers to run the first daily cycle.
+gold-digger install
+```
 
-# 3. Verify keys + sources
-gold-digger setup
+That's it. The `install` command walks you through everything interactively. If something goes wrong, run `gold-digger doctor` — it tells you exactly what's missing and how to fix it.
 
-# 4. Populate your watchlist (copy-paste-able examples)
-gold-digger add-project unigox                                                              # pre-token, AI-crypto
-gold-digger add-project ai16z        --coingecko-id ai16z           --twitter ai16zdao     --narrative ai-agents
-gold-digger add-project openserv     --coingecko-id openserv         --twitter openservAI   --narrative ai-agents
-gold-digger add-project bittensor    --coingecko-id bittensor        --twitter opentensor   --narrative ai-infra
+### Manual setup (if you prefer control)
 
-# 5. Follow a few KOLs
+```bash
+# Check what's detected + interactive key wizard
+gold-digger setup --interactive
+
+# See full diagnostic + recommended fixes
+gold-digger doctor
+
+# Populate watchlist manually (one word per project — AI does the rest)
+gold-digger add-project unigox                  # pre-token, auto-scouts social
+gold-digger add-project openserv                # finds CoinGecko, GitHub, mentions
+gold-digger add-project bittensor               # 18+ fields auto-filled
+
+# Follow KOLs
 gold-digger add-kol DegenSensei --focus ai-crypto,low-cap
 gold-digger add-kol resdegen    --focus ai-crypto,low-cap
 gold-digger add-kol andyyy      --focus ai-crypto
 
-# 6. Run the first daily pipeline
+# Run the full research cycle
 gold-digger daily
 ```
 
-Reports land in `$GOLD_DIGGER_DATA/reports/daily/YYYY-MM-DD.md`. Default data directory is `~/Documents/GoldDigger/` — point Obsidian at it to browse as a knowledge graph.
+Reports land in `data/reports/daily/YYYY-MM-DD.md` inside the repo. The `data/` directory is gitignored — your research stays local.
+
+### Where your API keys live
+
+Gold Digger checks **14 locations** for API keys, so it'll find them wherever you or your harness stored them:
+
+1. Process environment (exported in current shell)
+2. `~/.config/shared/.env` — **recommended**, reused by other tools
+3. `~/.config/last30days/.env` — inherit from last30days if installed
+4. `~/.config/cowork/.env` — Anthropic Cowork shared location
+5. `~/.config/gold-digger/.env` — dedicated fallback
+6. `~/.config/hermes/.env` — Hermes harness storage
+7. `~/.config/openclaw/.env` — OpenClaw harness storage
+8. `~/.config/codex/.env` — Codex harness storage
+9–13. Shell profiles: `~/.bash_profile`, `~/.bashrc`, `~/.profile`, `~/.zshrc`, `~/.zshenv` — `export KEY=value` lines are parsed directly
+14. macOS Keychain (optional, via `security` CLI)
+15. 1Password CLI (if you use `op://...` references)
+
+If `gold-digger install` or `setup --interactive` can't find your keys, run `gold-digger doctor` and it'll tell you exactly which paths were searched.
 
 ---
 
@@ -402,6 +424,31 @@ You can also tune the ignore list — edit [`references/ignore.md`](references/i
 - **[last30days](https://github.com/mvanhorn/last30days-skill)** — social and web research engine. Install first; Gold Digger calls it via subprocess for Reddit / HN / YouTube / web signals. Without it, Gold Digger degrades to market data + GitHub + XAI + Perplexity.
 - `uv` (recommended) or `pip` for Python deps
 - `gh` CLI (optional, for GitHub auth inheritance)
+
+---
+
+## Glossary
+
+Crypto research jargon, demystified.
+
+| Term | Meaning |
+|---|---|
+| **KOL** | Key Opinion Leader — a crypto influencer (typically on X/Twitter) whose calls and first-mentions move retail attention |
+| **TGE** | Token Generation Event — the public launch of a new token (price discovery moment) |
+| **FDV** | Fully Diluted Valuation — token price × max supply (the "worst case" valuation if all tokens existed today) |
+| **Mcap** | Market Cap — token price × circulating supply (current valuation) |
+| **TVL** | Total Value Locked — USD value of assets deposited in a DeFi protocol |
+| **Points farming** | Accruing points via on-chain activity, typically redeemable for a future airdrop |
+| **Airdrop eligibility** | Whether your on-chain activity qualifies for a free token distribution |
+| **First-mention** | The first time a tracked KOL mentions a ticker — Gold Digger auto-captures this as alpha |
+| **Narrative** | A category/meme driving capital rotation (AI-agents, DePIN, RWA, intents, restaking, etc.) |
+| **Narrative rotation** | When capital flows from one narrative to another — Gold Digger detects these shifts from mention velocity |
+| **Scout tier** | Projects Gold Digger auto-discovered but you haven't manually promoted to `tracked` |
+| **Mention velocity** | Today's mention count minus 7-day average — positive = heating up, negative = cooling |
+| **Price-vs-attention divergence** | Attention rising while price is flat = classic early-accumulation setup |
+| **Dev-to-price divergence** | Heavy GitHub commits while price is flat = undervalued by market, developers still building |
+| **Scout** | Gold Digger's discovery mode — finds new projects via CoinGecko listings, DeFiLlama protocols, KOL first-mentions, web search |
+| **last30days** | The underlying social/web research engine Gold Digger calls. See [comparison table](#gold-digger-vs-last30days) for the split. |
 
 ---
 

@@ -56,8 +56,51 @@ def all_keys() -> Dict[str, Optional[str]]:
     return {k: key_resolver.resolve_key(k) for k in key_resolver.KNOWN_KEYS}
 
 
-def cmd_setup(_args: argparse.Namespace) -> int:
-    """Show the key availability matrix."""
+# Each key's signup URL + description for the interactive wizard.
+KEY_GUIDE: Dict[str, Dict[str, str]] = {
+    "COINGECKO_API_KEY": {
+        "url": "https://www.coingecko.com/en/developers/dashboard",
+        "desc": "CoinGecko — price, mcap, supply, new-listing scout (Demo tier is free)",
+        "priority": "required",
+    },
+    "XAI_API_KEY": {
+        "url": "https://console.x.ai/",
+        "desc": "xAI grok-search — KOL feed tracking, first-mention auto-scout",
+        "priority": "highly recommended",
+    },
+    "PERPLEXITY_API_KEY": {
+        "url": "https://www.perplexity.ai/account/api/keys",
+        "desc": "Perplexity — cited deep-research for DD briefs",
+        "priority": "recommended",
+    },
+    "BRAVE_API_KEY": {
+        "url": "https://api.search.brave.com/app/keys",
+        "desc": "Brave Search — open-web scout (free 2k queries/month)",
+        "priority": "recommended",
+    },
+    "GITHUB_TOKEN": {
+        "url": "https://github.com/settings/tokens (or run `gh auth login`)",
+        "desc": "GitHub — repo commits, stars, dev-to-price divergence",
+        "priority": "recommended",
+    },
+    "EXA_API_KEY": {
+        "url": "https://exa.ai",
+        "desc": "Exa — semantic search scout (free 1k/month, alt to Brave)",
+        "priority": "optional",
+    },
+    "OPENROUTER_API_KEY": {
+        "url": "https://openrouter.ai/keys",
+        "desc": "OpenRouter — alt Perplexity Sonar path",
+        "priority": "optional",
+    },
+}
+
+
+def cmd_setup(args: argparse.Namespace) -> int:
+    """Show key availability OR run interactive wizard with --interactive."""
+    if getattr(args, "interactive", False):
+        return _cmd_setup_interactive()
+    # Default: show the availability matrix
     print("Gold Digger — key availability\n")
     print(f"{'KEY':<28} {'VALUE':<18} {'SOURCE':<32} DESCRIPTION")
     print("-" * 120)
@@ -75,6 +118,325 @@ def cmd_setup(_args: argparse.Namespace) -> int:
             k for k in src.requires_keys if not keys.get(k)
         )
         print(f"  - {src.name:<20} {status}")
+    print()
+    print("Missing keys? Run `gold-digger setup --interactive` to add them.")
+    return 0
+
+
+def _cmd_setup_interactive() -> int:
+    """Interactive wizard — prompts for each missing key, writes to user-chosen location."""
+    import os as _os
+
+    print("\n" + "=" * 60)
+    print("  Gold Digger — Interactive Setup")
+    print("=" * 60)
+    print("\nThis wizard will help you configure your API keys.")
+    print("For each missing key, you'll get a URL to sign up + a prompt.")
+    print("Press Enter to skip any key you don't want to set right now.\n")
+
+    # Step 1: show what's already configured
+    print("Checking existing configuration...\n")
+    found_count = 0
+    missing = []
+    for key_name in KEY_GUIDE:
+        value, source = key_resolver.resolved_source(key_name)
+        if value:
+            print(f"  ✓ {key_name:<24} found at {source}")
+            found_count += 1
+        else:
+            missing.append(key_name)
+            print(f"  ✗ {key_name:<24} missing ({KEY_GUIDE[key_name]['priority']})")
+    print(f"\n{found_count} already configured, {len(missing)} missing.\n")
+
+    if not missing:
+        print("All known keys are set. Nothing to do!")
+        return 0
+
+    # Step 2: prompt for each missing key
+    new_keys: Dict[str, str] = {}
+    for key_name in missing:
+        guide = KEY_GUIDE[key_name]
+        print(f"\n─── {key_name} ({guide['priority']}) ───")
+        print(f"  {guide['desc']}")
+        print(f"  Get a key: {guide['url']}")
+        try:
+            raw = input(f"  Paste key (or Enter to skip): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n(aborted)")
+            return 1
+        if raw:
+            new_keys[key_name] = raw
+            print(f"  ✓ captured")
+        else:
+            print(f"  ⊘ skipped")
+
+    if not new_keys:
+        print("\nNo keys entered. Nothing written.")
+        return 0
+
+    # Step 3: choose destination
+    print("\n" + "─" * 60)
+    print("Where should I save these keys?\n")
+    print("  [1] ~/.config/shared/.env   (recommended — reused by other tools)")
+    print("  [2] ~/.config/gold-digger/.env   (dedicated to Gold Digger)")
+    print("  [3] Print export lines I can paste into my shell profile")
+    try:
+        choice = input("\n  Choice [1]: ").strip() or "1"
+    except (EOFError, KeyboardInterrupt):
+        print("\n(aborted)")
+        return 1
+
+    if choice == "3":
+        print("\n" + "─" * 60)
+        print("Add these lines to ~/.bash_profile or ~/.zshrc:\n")
+        for k, v in new_keys.items():
+            print(f'  export {k}="{v}"')
+        print("\nThen `source ~/.bash_profile` or open a new terminal.")
+        return 0
+
+    # Choose file path
+    if choice == "2":
+        target = Path.home() / ".config" / "gold-digger" / ".env"
+    else:
+        target = Path.home() / ".config" / "shared" / ".env"
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _os.chmod(target.parent, 0o700)
+    except Exception:
+        pass
+
+    # Merge with existing file content (preserve other keys)
+    existing_lines: List[str] = []
+    existing_keys: set[str] = set()
+    if target.exists():
+        for line in target.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("export ") and "=" in stripped:
+                k = stripped[7:].split("=", 1)[0].strip()
+                if k in new_keys:
+                    continue  # will be rewritten
+                existing_keys.add(k)
+            existing_lines.append(line)
+
+    with target.open("w", encoding="utf-8") as f:
+        if not existing_lines:
+            f.write("# Shared API credentials for local research tools.\n")
+            f.write("# Location: {}\n".format(target))
+            f.write("# Permissions: 0600 (owner read/write only)\n\n")
+        else:
+            f.write("\n".join(existing_lines) + "\n")
+        for k, v in new_keys.items():
+            f.write(f'export {k}="{v}"\n')
+    try:
+        _os.chmod(target, 0o600)
+    except Exception:
+        pass
+
+    print(f"\n✓ Saved {len(new_keys)} keys to {target}")
+    print(f"✓ Permissions set to 0600 (owner-only)")
+
+    # Offer to add source line to shell profile
+    for profile in (Path.home() / ".bash_profile", Path.home() / ".zshrc"):
+        if not profile.exists():
+            continue
+        text = profile.read_text(encoding="utf-8") if profile.exists() else ""
+        if str(target) in text or f'"$HOME/.config/{target.parent.name}/.env"' in text:
+            continue  # already sourced
+        try:
+            choice2 = input(f"\nAdd source line to {profile}? [Y/n]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            choice2 = "n"
+        if choice2 in ("", "y", "yes"):
+            with profile.open("a", encoding="utf-8") as f:
+                f.write(f"\n# Gold Digger credentials\n")
+                f.write(f'if [ -f "{target}" ]; then set -a; . "{target}"; set +a; fi\n')
+            print(f"  ✓ Added source line to {profile}")
+        break  # only one profile needed
+
+    print("\n" + "=" * 60)
+    print("Setup complete! New shells will pick up the keys automatically.")
+    print("For THIS shell, run: source {}".format(target))
+    print("\nNext: `gold-digger init` to add starter projects")
+    print("      `gold-digger daily` to run your first research cycle")
+    return 0
+
+
+def cmd_doctor(_args: argparse.Namespace) -> int:
+    """Diagnostic report: what's configured, what's broken, how to fix it."""
+    import os
+    import sys as _sys
+    import shutil as _shutil
+
+    print("\n" + "=" * 60)
+    print("  Gold Digger — Diagnostic")
+    print("=" * 60)
+
+    # Environment
+    print(f"\n[Environment]")
+    print(f"  Python:          {_sys.version.split()[0]}")
+    print(f"  Platform:        {_sys.platform}")
+    print(f"  Repo location:   {Path(__file__).resolve().parent.parent}")
+    print(f"  Data directory:  {storage.data_root()}")
+    print(f"  Data writable:   {'yes' if storage.data_root().exists() and os.access(storage.data_root(), os.W_OK) else 'NO — run setup'}")
+
+    # Keys
+    print(f"\n[API Keys]")
+    keys = all_keys()
+    configured = 0
+    for key_name in KEY_GUIDE:
+        value, source = key_resolver.resolved_source(key_name)
+        priority = KEY_GUIDE[key_name]["priority"]
+        if value:
+            print(f"  ✓ {key_name:<24} {priority:<20} {source}")
+            configured += 1
+        else:
+            print(f"  ✗ {key_name:<24} {priority:<20} NOT FOUND")
+    print(f"\n  {configured}/{len(KEY_GUIDE)} configured. Missing? → gold-digger setup --interactive")
+
+    # Sources
+    print(f"\n[Data Sources]")
+    for src in SOURCES:
+        if src.available(keys):
+            print(f"  ✓ {src.name:<20} ready")
+        else:
+            missing_keys = [k for k in src.requires_keys if not keys.get(k)]
+            print(f"  ✗ {src.name:<20} missing: {', '.join(missing_keys)}")
+
+    # Dependencies
+    print(f"\n[Dependencies]")
+    for binary in ("python3", "uv", "gh", "git"):
+        path = _shutil.which(binary)
+        status = path if path else "NOT FOUND"
+        print(f"  {'✓' if path else '✗'} {binary:<20} {status}")
+
+    # last30days
+    print(f"\n[last30days skill]")
+    from sources.last30days import _locate_last30days
+    l30_root = _locate_last30days()
+    if l30_root:
+        print(f"  ✓ Installed at:     {l30_root}")
+    else:
+        print(f"  ✗ NOT FOUND. Install with:")
+        print(f"      gh repo clone mvanhorn/last30days-skill ~/projects/last30days-skill")
+        print(f"      cd ~/projects/last30days-skill && uv sync")
+
+    # Harness detection
+    print(f"\n[Harness Integration]")
+    harness_paths = {
+        "Claude Code skill": Path.home() / ".claude" / "skills" / "gold-digger",
+        "OpenClaw plugin":   Path.home() / ".openclaw" / "plugins" / "gold-digger",
+        "Codex plugin":      Path.home() / ".codex" / "plugins" / "gold-digger",
+        "Hermes plugin":     Path.home() / ".hermes" / "plugins" / "gold-digger",
+    }
+    for label, path in harness_paths.items():
+        if path.exists() or path.is_symlink():
+            print(f"  ✓ {label:<22} {path}")
+        else:
+            print(f"  ⊘ {label:<22} not installed")
+
+    # Data status
+    print(f"\n[Data State]")
+    root = storage.data_root()
+    projects = list((root / "projects").glob("*.md")) if (root / "projects").exists() else []
+    kols = list((root / "kols").glob("*.md")) if (root / "kols").exists() else []
+    snaps = list((root / "snapshots").glob("*.md")) if (root / "snapshots").exists() else []
+    reports = list((root / "reports" / "daily").glob("*.md")) if (root / "reports" / "daily").exists() else []
+    print(f"  Projects:        {len(projects)}")
+    print(f"  KOLs:            {len(kols)}")
+    print(f"  Snapshots:       {len(snaps)}")
+    print(f"  Daily reports:   {len(reports)}")
+    if not projects:
+        print(f"\n  No projects yet. Run: gold-digger init  (starter kit)")
+        print(f"                  or:  gold-digger add-project <name>")
+
+    # last30days store
+    print(f"\n[Research Store (SQLite)]")
+    db_path = Path.home() / ".local" / "share" / "last30days" / "research.db"
+    if db_path.exists():
+        size_kb = db_path.stat().st_size / 1024
+        print(f"  ✓ {db_path} ({size_kb:.0f} KB)")
+    else:
+        print(f"  ⊘ not yet created — will be built on first `gold-digger daily`")
+
+    # Status summary
+    print("\n" + "=" * 60)
+    blocked = []
+    if configured == 0:
+        blocked.append("no keys configured")
+    if not l30_root:
+        blocked.append("last30days not installed")
+    if not projects:
+        blocked.append("no projects in watchlist")
+    if blocked:
+        print(f"STATUS: {', '.join(blocked)}")
+        print(f"\nRecommended fix: gold-digger install  (does all bootstrap)")
+    else:
+        print(f"STATUS: ready — run `gold-digger daily`")
+    return 0
+
+
+def cmd_install(_args: argparse.Namespace) -> int:
+    """Bootstrap everything: clone last30days, run setup wizard, init, first daily."""
+    import shutil as _shutil
+
+    print("\n" + "=" * 60)
+    print("  Gold Digger — Install & Bootstrap")
+    print("=" * 60)
+
+    # Step 1: ensure last30days is installed
+    from sources.last30days import _locate_last30days
+    if _locate_last30days():
+        print("\n[1/4] ✓ last30days already installed")
+    else:
+        print("\n[1/4] Installing last30days...")
+        if not _shutil.which("gh"):
+            print("  ✗ `gh` CLI not found. Install from https://cli.github.com/ first.")
+            return 1
+        if not _shutil.which("uv"):
+            print("  ✗ `uv` not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh")
+            return 1
+        target = Path.home() / "projects" / "last30days-skill"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        import subprocess
+        subprocess.run(["gh", "repo", "clone", "mvanhorn/last30days-skill", str(target)], check=False)
+        subprocess.run(["uv", "sync"], cwd=target, check=False)
+        if _locate_last30days():
+            print(f"  ✓ Installed to {target}")
+        else:
+            print(f"  ✗ Install failed. Try manually.")
+            return 1
+
+    # Step 2: interactive key setup
+    print("\n[2/4] API key setup")
+    _cmd_setup_interactive()
+
+    # Step 3: starter watchlist
+    print("\n[3/4] Starter watchlist")
+    try:
+        choice = input("Add starter projects + KOLs (unigox, openserv, DegenSensei, resdegen)? [Y/n]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        choice = "n"
+    if choice in ("", "y", "yes"):
+        fake_args = argparse.Namespace(force=False)
+        cmd_init(fake_args)
+
+    # Step 4: offer first daily run
+    print("\n[4/4] First research cycle")
+    try:
+        choice = input("Run `gold-digger daily` now to prove everything works? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        choice = "n"
+    if choice in ("y", "yes"):
+        fake_args = argparse.Namespace()
+        cmd_daily(fake_args)
+
+    print("\n" + "=" * 60)
+    print("Install complete.")
+    print("\nDaily usage:")
+    print("  gold-digger daily              # full research cycle")
+    print("  gold-digger dashboard          # open the HTML dashboard")
+    print("  gold-digger doctor             # diagnostic if anything breaks")
     return 0
 
 
@@ -725,7 +1087,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_setup = sub.add_parser("setup", help="show API key availability and sources")
+    p_setup.add_argument("--interactive", "-i", action="store_true", help="interactive key wizard")
     p_setup.set_defaults(func=cmd_setup)
+
+    p_install = sub.add_parser("install", help="bootstrap everything: last30days + keys + starter + first run")
+    p_install.set_defaults(func=cmd_install)
+
+    p_doctor = sub.add_parser("doctor", help="diagnose setup problems + show what's configured")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     p_init = sub.add_parser("init", help="first-time setup: populate with starter projects + KOLs")
     p_init.add_argument("--force", action="store_true", help="add starters even if watchlist exists")
