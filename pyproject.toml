@@ -19,7 +19,7 @@ dev = [
 ]
 
 [project.scripts]
-gold-digger = "gold_digger:main"
+gold-digger = "scripts.gold_digger:main"
 
 [build-system]
 requires = ["hatchling"]

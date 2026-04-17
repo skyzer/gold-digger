@@ -246,7 +246,9 @@ def _cmd_setup_interactive() -> int:
         if not profile.exists():
             continue
         text = profile.read_text(encoding="utf-8") if profile.exists() else ""
-        if str(target) in text or f'"$HOME/.config/{target.parent.name}/.env"' in text:
+        home_ref = f'"{Path.home()}/.config/{target.parent.name}/.env"'
+        dollar_home_ref = f'"\\$HOME/.config/{target.parent.name}/.env"'
+        if str(target) in text or home_ref in text or dollar_home_ref in text:
             continue  # already sourced
         try:
             choice2 = input(f"\nAdd source line to {profile}? [Y/n]: ").strip().lower()
