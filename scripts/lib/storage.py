@@ -40,9 +40,34 @@ def data_root() -> Path:
 def ensure_layout() -> Path:
     """Create the standard subdirectory layout and return the data root."""
     root = data_root()
-    for sub in ("projects", "kols", "reports/daily", "snapshots", "trends"):
+    for sub in ("projects", "kols", "reports/daily", "snapshots", "trends", "cache"):
         (root / sub).mkdir(parents=True, exist_ok=True)
     return root
+
+
+def cache_root() -> Path:
+    """Return the cache directory, creating it if needed."""
+    root = ensure_layout() / "cache"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def read_json_cache(path: Path) -> Any:
+    """Best-effort JSON cache read. Returns None on missing/corrupt data."""
+    if not path.exists():
+        return None
+    try:
+        import json
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def write_json_cache(path: Path, data: Any) -> None:
+    """Write JSON cache atomically enough for local single-user use."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import json
+    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def _yaml_dump(data: Dict[str, Any]) -> str:

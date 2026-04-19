@@ -9,18 +9,82 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
+from pathlib import Path
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+from lib import storage
 from sources._base import Source
 
 XAI_ENDPOINT = "https://api.x.ai/v1/responses"
 DEFAULT_MODEL = "grok-4.20-reasoning"
 
+# TTLs per cache kind. Keep short enough that same-day repeat runs stay fresh,
+# but long enough that manual re-runs within a short window are cheap.
+# Override via XAI_CACHE_TTL_* env vars for debugging.
+_TTL_SECONDS: Dict[str, int] = {
+    "kol-posts": 30 * 60,   # 30 min — KOLs post throughout the day
+    "mentions":  60 * 60,   # 60 min — broader, less time-sensitive
+}
 
-def _post(body: Dict[str, Any], key: str, timeout: int = 60) -> Optional[Dict[str, Any]]:
+
+def _today_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _now_utc_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _cache_path(kind: str) -> Path:
+    return storage.cache_root() / f"xai-{kind}-{_today_utc()}.json"
+
+
+def _cache_load(kind: str) -> Dict[str, Any]:
+    data = storage.read_json_cache(_cache_path(kind))
+    return data if isinstance(data, dict) else {}
+
+
+def _cache_save(kind: str, data: Dict[str, Any]) -> None:
+    storage.write_json_cache(_cache_path(kind), data)
+
+
+def _cache_get_fresh(cache: Dict[str, Any], key: str, kind: str) -> Optional[Any]:
+    """Return cached data if the entry exists AND is within TTL.
+
+    Handles both new wrapped format {fetched_at, data} and legacy flat format
+    (treats legacy entries as expired so they get refreshed on next run).
+    """
+    entry = cache.get(key)
+    if entry is None:
+        return None
+    # Legacy flat entry (pre-TTL) — treat as expired to force refresh
+    if not isinstance(entry, dict) or "fetched_at" not in entry:
+        return None
+    fetched_at = entry.get("fetched_at")
+    if not isinstance(fetched_at, str):
+        return None
+    try:
+        # ISO 8601 with Z suffix
+        ts = datetime.strptime(fetched_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    age = (datetime.now(timezone.utc) - ts).total_seconds()
+    ttl = _TTL_SECONDS.get(kind, 30 * 60)
+    if age > ttl:
+        return None
+    return entry.get("data")
+
+
+def _cache_put(cache: Dict[str, Any], key: str, data: Any) -> None:
+    """Store data in the cache dict with a fetched_at timestamp."""
+    cache[key] = {"fetched_at": _now_utc_iso(), "data": data}
+
+
+def _post(body: Dict[str, Any], key: str, timeout: int = 25) -> Optional[Dict[str, Any]]:
     """POST to xAI, return parsed JSON or None on any failure."""
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(XAI_ENDPOINT, data=data, method="POST")
@@ -108,6 +172,11 @@ def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 1
     keys: date (ISO), text, url. Empty list on failure."""
     if not key or not handle:
         return []
+    cache_key = f"{handle}|{since_hours}|{limit}"
+    cache = _cache_load("kol-posts")
+    fresh = _cache_get_fresh(cache, cache_key, "kol-posts")
+    if isinstance(fresh, list):
+        return fresh
     prompt = (
         f"Find the {limit} most recent posts from @{handle} on X "
         f"within the last {since_hours} hours. "
@@ -122,7 +191,7 @@ def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 1
         "input": [{"role": "user", "content": prompt}],
         "tools": [{"type": "x_search"}],
     }
-    response = _post(body, key)
+    response = _post(body, key, timeout=20)
     if not response:
         return []
     text = _extract_message_text(response)
@@ -144,6 +213,8 @@ def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 1
             "url": post.get("url"),
             "tickers": extract_tickers(body_text),
         })
+    _cache_put(cache, cache_key, normalised)
+    _cache_save("kol-posts", cache)
     return normalised
 
 
@@ -152,6 +223,11 @@ def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int =
     Used for mention-count aggregation across all of X."""
     if not key:
         return []
+    cache_key = f"{query}|{since_hours}|{limit}"
+    cache = _cache_load("mentions")
+    fresh = _cache_get_fresh(cache, cache_key, "mentions")
+    if isinstance(fresh, list):
+        return fresh
     prompt = (
         f"Search X for posts mentioning '{query}' in the last {since_hours} hours. "
         f"Return the {limit} most relevant recent posts. "
@@ -164,7 +240,7 @@ def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int =
         "input": [{"role": "user", "content": prompt}],
         "tools": [{"type": "x_search"}],
     }
-    response = _post(body, key)
+    response = _post(body, key, timeout=20)
     if not response:
         return []
     text = _extract_message_text(response)
@@ -173,7 +249,10 @@ def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int =
     parsed = _extract_json_array(text)
     if not parsed:
         return []
-    return [p for p in parsed if isinstance(p, dict)]
+    normalised = [p for p in parsed if isinstance(p, dict)]
+    _cache_put(cache, cache_key, normalised)
+    _cache_save("mentions", cache)
+    return normalised
 
 
 class XaiGrok(Source):

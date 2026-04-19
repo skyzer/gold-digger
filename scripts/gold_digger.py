@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -971,6 +972,21 @@ def cmd_daily(_args: argparse.Namespace) -> int:
         print("See README.md Quick Start for example commands.\n")
 
     enriched_projects: List[Dict[str, Any]] = []
+    # Per-project enrichment. Sources run in parallel within each project via
+    # ThreadPoolExecutor so the slow ones (xAI, last30days) don't serialise
+    # against the fast ones (CoinGecko, GitHub). Wall time per project drops
+    # from sum-of-all-sources to max-single-source.
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _run_source(src, project_fm, key_map):
+        """Execute one source's fetch_watchlist, capturing timing + errors."""
+        t0 = time.time()
+        try:
+            result = src.fetch_watchlist(project_fm, key_map)
+            return src.name, result, time.time() - t0, None
+        except Exception as exc:  # noqa: BLE001
+            return src.name, None, time.time() - t0, exc
+
     for path in tracked:
         slug = path.stem
         fm, _body = storage.read_project(path)
@@ -978,21 +994,37 @@ def cmd_daily(_args: argparse.Namespace) -> int:
             continue
         print(f"[enrich] {slug}")
         updates: Dict[str, Any] = {}
-        for src in SOURCES:
-            if not src.available(keys):
-                continue
-            try:
-                src_updates = src.fetch_watchlist(fm, keys)
-                if src_updates:
-                    updates.update(src_updates)
-            except Exception as exc:
-                print(f"  {src.name}: error {exc}")
+        source_timings: List[str] = []
+        active_sources = [s for s in SOURCES if s.available(keys)]
+        project_t0 = time.time()
+        # max_workers = len(sources) so every source runs truly in parallel
+        with ThreadPoolExecutor(max_workers=max(1, len(active_sources))) as pool:
+            futures = [pool.submit(_run_source, src, fm, keys) for src in active_sources]
+            for fut in as_completed(futures):
+                name, result, elapsed, exc = fut.result()
+                if exc is not None:
+                    source_timings.append(f"{name}:ERR:{elapsed:.1f}s")
+                    print(f"  {name}: error after {elapsed:.1f}s: {exc}")
+                else:
+                    source_timings.append(f"{name}:{elapsed:.1f}s")
+                    if result:
+                        updates.update(result)
+        project_elapsed = time.time() - project_t0
         if updates:
             merged = storage.update_project_frontmatter(path, updates)
             enriched_projects.append(merged)
-            print(f"  → {len(updates)} fields updated")
+            print(f"  → {len(updates)} fields updated (wall: {project_elapsed:.1f}s)")
         else:
             enriched_projects.append(fm)
+        if source_timings:
+            # Sort by elapsed desc so bottlenecks are visible at a glance
+            def _parse_time(s: str) -> float:
+                try:
+                    return float(s.split(":")[-1].rstrip("s"))
+                except (ValueError, IndexError):
+                    return 0.0
+            source_timings.sort(key=_parse_time, reverse=True)
+            print(f"  timings: {', '.join(source_timings)}")
 
     # 2. Scout pass happens later; pre-compute narrative distribution only if
     #    we already have scout candidates. We'll re-snapshot after scout runs.
@@ -1030,16 +1062,28 @@ def cmd_daily(_args: argparse.Namespace) -> int:
     # Re-write snapshot with narrative distribution included
     snapshots.write_daily_snapshot(enriched_projects, narrative_counts=narrative_counts)
 
-    # 5. KOL digest
+    # 5. KOL digest — parallelise across handles so slow xAI calls don't queue
     print("\n[kols] running KOL digest...")
     kol_posts: List[Dict[str, Any]] = []
     xai_key = keys.get("XAI_API_KEY")
     if xai_key:
-        for kol in kol_lib.load_all():
-            handle = kol.get("handle")
-            posts = fetch_kol_posts(handle, xai_key, since_hours=24, limit=10)
-            kol_posts.extend(posts)
-            print(f"  @{handle}: {len(posts)} posts")
+        tracked_kols = kol_lib.load_all()
+        kol_t0 = time.time()
+        with ThreadPoolExecutor(max_workers=max(1, len(tracked_kols))) as pool:
+            future_to_handle = {
+                pool.submit(fetch_kol_posts, kol.get("handle"), xai_key, 24, 10): kol.get("handle")
+                for kol in tracked_kols
+            }
+            for fut in as_completed(future_to_handle):
+                handle = future_to_handle[fut]
+                try:
+                    posts = fut.result()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  @{handle}: error: {exc}")
+                    continue
+                kol_posts.extend(posts)
+                print(f"  @{handle}: {len(posts)} posts")
+        print(f"  (kol digest wall: {time.time() - kol_t0:.1f}s)")
     else:
         print("  (skipped — no XAI_API_KEY)")
 
