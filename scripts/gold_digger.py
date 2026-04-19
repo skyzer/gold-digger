@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -246,7 +247,9 @@ def _cmd_setup_interactive() -> int:
         if not profile.exists():
             continue
         text = profile.read_text(encoding="utf-8") if profile.exists() else ""
-        if str(target) in text or f'"$HOME/.config/{target.parent.name}/.env"' in text:
+        home_ref = f'"{Path.home()}/.config/{target.parent.name}/.env"'
+        dollar_home_ref = f'"\\$HOME/.config/{target.parent.name}/.env"'
+        if str(target) in text or home_ref in text or dollar_home_ref in text:
             continue  # already sourced
         try:
             choice2 = input(f"\nAdd source line to {profile}? [Y/n]: ").strip().lower()
@@ -976,21 +979,29 @@ def cmd_daily(_args: argparse.Namespace) -> int:
             continue
         print(f"[enrich] {slug}")
         updates: Dict[str, Any] = {}
+        source_timings: List[str] = []
         for src in SOURCES:
             if not src.available(keys):
                 continue
+            t0 = time.time()
             try:
                 src_updates = src.fetch_watchlist(fm, keys)
+                elapsed = time.time() - t0
+                source_timings.append(f"{src.name}:{elapsed:.1f}s")
                 if src_updates:
                     updates.update(src_updates)
             except Exception as exc:
-                print(f"  {src.name}: error {exc}")
+                elapsed = time.time() - t0
+                source_timings.append(f"{src.name}:ERR:{elapsed:.1f}s")
+                print(f"  {src.name}: error after {elapsed:.1f}s: {exc}")
         if updates:
             merged = storage.update_project_frontmatter(path, updates)
             enriched_projects.append(merged)
             print(f"  → {len(updates)} fields updated")
         else:
             enriched_projects.append(fm)
+        if source_timings:
+            print(f"  timings: {', '.join(source_timings)}")
 
     # 2. Scout pass happens later; pre-compute narrative distribution only if
     #    we already have scout candidates. We'll re-snapshot after scout runs.
