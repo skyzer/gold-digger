@@ -12,20 +12,8 @@
 
 A one-off crypto research session is shallow. The value comes from running Gold Digger every day and letting the data accumulate. Here's what emerges over time:
 
-```mermaid
-flowchart LR
-    D1["Day 1<br/>1 snapshot<br/>baseline"]
-    D7["Day 7<br/>mention velocity<br/>price-vs-attention<br/>divergence"]
-    D30["Day 30<br/>narrative rotation<br/>KOL accuracy<br/>scoring"]
-    D90["Day 90<br/>learning loop<br/>early 10-100x<br/>setups"]
+<img width="1034" height="309" alt="image" src="https://github.com/user-attachments/assets/a194fc0f-dd9c-4f6e-9526-d71db57c2ac6" />
 
-    D1 --> D7 --> D30 --> D90
-
-    style D1 fill:#e8e8e8,stroke:#555,color:#222
-    style D7 fill:#fff2c8,stroke:#c49b00,color:#222
-    style D30 fill:#ffcfa3,stroke:#cc6a00,color:#222
-    style D90 fill:#ff9e9e,stroke:#b40000,color:#222
-```
 
 One run is a lookup. Seven runs reveal velocity. Thirty runs show which narratives are rotating in. Ninety runs start scoring your KOLs by their hit rate. Gold Digger is not a query tool — it's a research loop.
 
@@ -153,55 +141,8 @@ Now:
 
 ## Architecture — how data flows
 
-```mermaid
-flowchart LR
-    subgraph SRC[Data sources]
-        CG[CoinGecko]
-        DL[DeFiLlama]
-        GH[GitHub]
-        XAI[xAI grok-search]
-        L30[last30days]
-        PPL[Perplexity]
-    end
+<img width="1125" height="727" alt="image" src="https://github.com/user-attachments/assets/74a32f69-026a-4294-8e81-8b7b81c298d5" />
 
-    subgraph PIPE[Daily pipeline]
-        EN[Enrich watchlist]
-        SN[Write snapshot]
-        SCOUT[Scout discovery]
-        KOLS[KOL digest]
-        FM[First-mention<br/>auto-scout]
-        AGG[Aggregate<br/>velocity + rotation]
-        REND[Render daily +<br/>brief reports]
-    end
-
-    subgraph STORE[Durable markdown store]
-        PR[("projects/*.md<br/>(frontmatter + notes)")]
-        SNAP[("snapshots/*.md<br/>(price + narrative)")]
-        TR[("trends/kol-mentions.md<br/>(KOL memory)")]
-        REP[("reports/daily/*.md<br/>(full + brief)")]
-    end
-
-    CG --> EN
-    DL --> EN
-    GH --> EN
-    XAI --> KOLS
-    L30 --> KOLS
-    PPL -.on-demand.-> EN
-
-    EN --> SN
-    SN --> AGG
-    KOLS --> FM
-    SCOUT --> REND
-    FM --> PR
-    FM --> REND
-    AGG --> REND
-
-    REND --> REP
-    SN --> SNAP
-    FM --> TR
-
-    STORE -.read by other agents.-> CONSUMERS[Other agents<br/>dashboards<br/>LLMs]
-```
 
 Every arrow is a plain-text write. Every store is a flat file. No database, no API layer — any tool that reads markdown or parses an embedded JSON block can consume Gold Digger's output.
 
@@ -209,17 +150,8 @@ Every arrow is a plain-text write. Every store is a flat file. No database, no A
 
 ## Project lifecycle — state machine
 
-```mermaid
-stateDiagram-v2
-    [*] --> discovered: KOL first-mention<br/>or scout find
-    discovered --> scout: Auto-added<br/>(tier:scout)
-    scout --> tracked: You promote<br/>(edit tier in md)
-    tracked --> watched: Cooling signal<br/>(low velocity)
-    watched --> tracked: Heats up again
-    tracked --> archived: You decide
-    watched --> archived: 30d dormant
-    archived --> [*]
-```
+<img width="1094" height="512" alt="image" src="https://github.com/user-attachments/assets/4147fb8d-85a9-4eff-8f97-fb72413082ae" />
+
 
 Projects flow through tiers based on signal, not buckets. You always have the final say — Gold Digger auto-adds and auto-suggests, but promotion to `tracked` and archiving is a manual frontmatter edit. Every transition is preserved in the project file's git history.
 
@@ -229,38 +161,8 @@ Projects flow through tiers based on signal, not buckets. You always have the fi
 
 Tracked KOLs are a source of alpha *if* you can capture every ticker they mention, resolve it to a real project, and dedupe against what you already know. Gold Digger does this every day:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant KOL as Tracked KOL
-    participant XAI as xAI grok-search
-    participant FM as First-mention<br/>classifier
-    participant IGN as Ignore list
-    participant WL as Watchlist
-    participant CG as CoinGecko<br/>/search
-    participant REP as Daily report
+<img width="1130" height="595" alt="image" src="https://github.com/user-attachments/assets/084d6570-2741-40b8-971c-159e3c060fa3" />
 
-    KOL->>XAI: Recent 24h posts
-    XAI->>FM: Extract $TICKER regex
-    FM->>IGN: Is ticker blue-chip / stable / meme?
-    alt Ignored
-        FM->>REP: Silently skip
-    else Active
-        FM->>WL: Matches existing project?
-        alt Already tracked
-            FM->>WL: Append KOL to mentioned_by
-            FM->>REP: "KOL signal on tracked project"
-        else Unknown ticker
-            FM->>CG: Resolve ticker → coin id
-            alt Found
-                FM->>WL: Auto-create scout-tier project
-                FM->>REP: "Auto-added to watchlist"
-            else Not found
-                FM->>REP: "Unresolved — manual review"
-            end
-        end
-    end
-```
 
 The persistent memory file `trends/kol-mentions.md` records every (KOL, ticker) pair so the same mention never re-triggers, and builds a long-term record you can backtest: "which of DegenSensei's first-mentions 2x'd within 30 days?"
 
@@ -268,46 +170,8 @@ The persistent memory file `trends/kol-mentions.md` records every (KOL, ticker) 
 
 ## Where the value compounds
 
-```mermaid
-flowchart TB
-    subgraph IN[Daily inputs]
-        PR[Price + mcap + supply]
-        SOC[KOL posts]
-        DEV[GitHub commits]
-        NEW[Scout discoveries]
-    end
+<img width="1097" height="596" alt="image" src="https://github.com/user-attachments/assets/b8c1d4f9-0be2-4e16-a310-8333d724cc91" />
 
-    subgraph ACC[Accumulates over N days]
-        SNAP[Price history]
-        VEL[Mention velocity]
-        DIV[Price-vs-attention divergence]
-        NAR[Narrative rotation]
-        KACC[KOL accuracy score]
-    end
-
-    subgraph OUT[Emergent signals]
-        EARLY[Early-accumulation<br/>setups]
-        ROT[Narrative rotations<br/>before price moves]
-        WINNERS[KOLs who call<br/>10x winners]
-    end
-
-    PR --> SNAP
-    SOC --> VEL
-    PR --> DIV
-    SOC --> DIV
-    NEW --> NAR
-    SOC --> KACC
-
-    SNAP --> EARLY
-    VEL --> EARLY
-    DIV --> EARLY
-    NAR --> ROT
-    KACC --> WINNERS
-
-    style EARLY fill:#ffd6a5,stroke:#cc6a00
-    style ROT fill:#ffd6a5,stroke:#cc6a00
-    style WINNERS fill:#ffd6a5,stroke:#cc6a00
-```
 
 The orange nodes on the right are what Gold Digger is built to surface. None of them are visible on day 1. All of them emerge as the daily markdown trail grows.
 
