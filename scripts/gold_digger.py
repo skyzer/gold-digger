@@ -38,6 +38,7 @@ from sources.last30days import Last30Days  # noqa: E402
 from sources.defillama import DeFiLlama  # noqa: E402
 from sources.github import GitHub  # noqa: E402
 from sources.perplexity import Perplexity, research as pplx_research, project_dd_prompt  # noqa: E402
+from sources.news import ProjectNews  # noqa: E402
 
 
 # Source registry — add new sources here (or drop files in sources/_custom/).
@@ -48,6 +49,7 @@ SOURCES: List[Source] = [
     GitHub(),
     XaiGrok(),
     Last30Days(),
+    ProjectNews(),
     Perplexity(),
 ]
 
