@@ -39,6 +39,13 @@ def _fmt_pct(v: Any) -> str:
         return str(v)
 
 
+def _fmt_x_handle(handle: Any) -> str:
+    if not handle:
+        return "—"
+    handle_str = str(handle).strip().lstrip("@")
+    return f"@{handle_str}" if handle_str else "—"
+
+
 def _reports_dir() -> Path:
     d = storage.data_root() / "reports" / "daily"
     d.mkdir(parents=True, exist_ok=True)
@@ -107,11 +114,11 @@ def write_daily_reports(
     if scout:
         lines.append("Top 15 low-cap AI-crypto candidates, sorted by mcap ascending:")
         lines.append("")
-        lines.append("| Name | Ticker | Mcap | 24h | 7d | 30d |")
-        lines.append("|---|---|---|---|---|---|")
+        lines.append("| Name | Ticker | X | Mcap | 24h | 7d | 30d |")
+        lines.append("|---|---|---|---|---|---|---|")
         for c in scout[:15]:
             lines.append(
-                f"| {c.get('name', '?')} | {c.get('ticker') or '—'} | "
+                f"| {c.get('name', '?')} | {c.get('ticker') or '—'} | {_fmt_x_handle(c.get('twitter'))} | "
                 f"{_fmt_mcap(c.get('mcap'))} | {_fmt_pct(c.get('change_24h_pct'))} | "
                 f"{_fmt_pct(c.get('change_7d_pct'))} | {_fmt_pct(c.get('change_30d_pct'))} |"
             )
@@ -123,13 +130,13 @@ def write_daily_reports(
     lines.append("## Watchlist — current state")
     lines.append("")
     if projects:
-        lines.append("| Project | Ticker | Price | Mcap | 24h | 7d | 30d | Mentions 7d |")
-        lines.append("|---|---|---|---|---|---|---|---|")
+        lines.append("| Project | Ticker | X | Price | Mcap | 24h | 7d | 30d | Mentions 7d |")
+        lines.append("|---|---|---|---|---|---|---|---|---|")
         for p in sorted(projects, key=lambda x: (x.get("mcap") or 0)):
             slug = p.get("slug")
             wiki = f"[[{slug}]]" if slug else p.get("name", "?")
             lines.append(
-                f"| {wiki} | {p.get('ticker') or '—'} | "
+                f"| {wiki} | {p.get('ticker') or '—'} | {_fmt_x_handle(p.get('twitter'))} | "
                 f"${p.get('price_usd')} | {_fmt_mcap(p.get('mcap'))} | "
                 f"{_fmt_pct(p.get('change_24h_pct'))} | {_fmt_pct(p.get('change_7d_pct'))} | "
                 f"{_fmt_pct(p.get('change_30d_pct'))} | {p.get('mention_count_7d') or 0} |"
@@ -137,6 +144,34 @@ def write_daily_reports(
     else:
         lines.append("_Watchlist empty._")
     lines.append("")
+
+    # 2.5 Recent project updates / announcements
+    lines.append("## Recent updates (tracked projects)")
+    lines.append("")
+    projects_with_updates = []
+    for p in projects:
+        recent = p.get("recent_announcements_30d") or []
+        shipped = p.get("features_shipped_30d") or []
+        partnerships = p.get("partnerships_30d") or []
+        if recent or shipped or partnerships:
+            projects_with_updates.append(p)
+    if projects_with_updates:
+        for p in sorted(projects_with_updates, key=lambda x: (x.get("mcap") or 0)):
+            slug = p.get("slug")
+            wiki = f"[[{slug}]]" if slug else p.get("name", "?")
+            ticker = p.get("ticker") or "—"
+            lines.append(f"### {wiki} ({ticker})")
+            lines.append("")
+            for item in (p.get("recent_announcements_30d") or [])[:4]:
+                lines.append(f"- announcement: {item}")
+            for item in (p.get("features_shipped_30d") or [])[:3]:
+                lines.append(f"- shipped: {item}")
+            for item in (p.get("partnerships_30d") or [])[:3]:
+                lines.append(f"- partnership: {item}")
+            lines.append("")
+    else:
+        lines.append("_No notable tracked-project announcements captured this run._")
+        lines.append("")
 
     # 3. KOL digest
     lines.append("## KOL digest (last 24h)")
@@ -255,12 +290,18 @@ def write_daily_reports(
     # 6. Action queue
     lines.append("## Action queue — deep dive tomorrow")
     lines.append("")
-    # Heuristic: projects in tracked watchlist with big 24h moves + any scout candidate > 50% over 7d
+    # Heuristic: big 24h moves, major recent announcements, plus scouts > 50% on 7d
     actions: List[str] = []
     for p in projects:
         c24 = p.get("change_24h_pct") or 0
         if abs(c24) >= 10:
             actions.append(f"- [[{p.get('slug')}]] — 24h move {_fmt_pct(c24)}")
+        recent = p.get("recent_announcements_30d") or []
+        shipped = p.get("features_shipped_30d") or []
+        partnerships = p.get("partnerships_30d") or []
+        if recent or shipped or partnerships:
+            highlight = (recent or shipped or partnerships)[0]
+            actions.append(f"- [[{p.get('slug')}]] — update: {highlight}")
     for c in scout[:30]:
         c7 = c.get("change_7d_pct") or 0
         if c7 >= 50:
