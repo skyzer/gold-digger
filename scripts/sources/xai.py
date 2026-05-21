@@ -8,7 +8,9 @@ Reference: https://docs.x.ai/docs/guides/tools/overview
 from __future__ import annotations
 
 import json
+import os
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 import urllib.error
@@ -29,6 +31,8 @@ _TTL_SECONDS: Dict[str, int] = {
     "kol-posts": 30 * 60,   # 30 min — KOLs post throughout the day
     "mentions":  60 * 60,   # 60 min — broader, less time-sensitive
 }
+_CACHE_LOCKS: Dict[str, threading.Lock] = {}
+_CACHE_LOCKS_GUARD = threading.Lock()
 
 
 def _today_utc() -> str:
@@ -50,6 +54,20 @@ def _cache_load(kind: str) -> Dict[str, Any]:
 
 def _cache_save(kind: str, data: Dict[str, Any]) -> None:
     storage.write_json_cache(_cache_path(kind), data)
+
+
+def _cache_lock(kind: str) -> threading.Lock:
+    with _CACHE_LOCKS_GUARD:
+        lock = _CACHE_LOCKS.get(kind)
+        if lock is None:
+            lock = threading.Lock()
+            _CACHE_LOCKS[kind] = lock
+        return lock
+
+
+def _cache_get_current(kind: str, key: str) -> Optional[Any]:
+    with _cache_lock(kind):
+        return _cache_get_fresh(_cache_load(kind), key, kind)
 
 
 def _cache_get_fresh(cache: Dict[str, Any], key: str, kind: str) -> Optional[Any]:
@@ -82,6 +100,22 @@ def _cache_get_fresh(cache: Dict[str, Any], key: str, kind: str) -> Optional[Any
 def _cache_put(cache: Dict[str, Any], key: str, data: Any) -> None:
     """Store data in the cache dict with a fetched_at timestamp."""
     cache[key] = {"fetched_at": _now_utc_iso(), "data": data}
+
+
+def _cache_store_current(kind: str, key: str, data: Any) -> None:
+    with _cache_lock(kind):
+        cache = _cache_load(kind)
+        _cache_put(cache, key, data)
+        _cache_save(kind, cache)
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read a positive integer from env, falling back on malformed values."""
+    try:
+        value = int(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def _post(body: Dict[str, Any], key: str, timeout: int = 25) -> Optional[Dict[str, Any]]:
@@ -173,8 +207,7 @@ def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 1
     if not key or not handle:
         return []
     cache_key = f"{handle}|{since_hours}|{limit}"
-    cache = _cache_load("kol-posts")
-    fresh = _cache_get_fresh(cache, cache_key, "kol-posts")
+    fresh = _cache_get_current("kol-posts", cache_key)
     if isinstance(fresh, list):
         return fresh
     prompt = (
@@ -191,7 +224,9 @@ def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 1
         "input": [{"role": "user", "content": prompt}],
         "tools": [{"type": "x_search"}],
     }
-    response = _post(body, key, timeout=20)
+    # X search calls through the reasoning model are often slower than plain
+    # model calls; 20s regularly turns valid KOL searches into false empties.
+    response = _post(body, key, timeout=_env_int("XAI_KOL_TIMEOUT_SECONDS", 120))
     if not response:
         return []
     text = _extract_message_text(response)
@@ -213,8 +248,7 @@ def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 1
             "url": post.get("url"),
             "tickers": extract_tickers(body_text),
         })
-    _cache_put(cache, cache_key, normalised)
-    _cache_save("kol-posts", cache)
+    _cache_store_current("kol-posts", cache_key, normalised)
     return normalised
 
 
@@ -224,8 +258,7 @@ def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int =
     if not key:
         return []
     cache_key = f"{query}|{since_hours}|{limit}"
-    cache = _cache_load("mentions")
-    fresh = _cache_get_fresh(cache, cache_key, "mentions")
+    fresh = _cache_get_current("mentions", cache_key)
     if isinstance(fresh, list):
         return fresh
     prompt = (
@@ -250,8 +283,7 @@ def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int =
     if not parsed:
         return []
     normalised = [p for p in parsed if isinstance(p, dict)]
-    _cache_put(cache, cache_key, normalised)
-    _cache_save("mentions", cache)
+    _cache_store_current("mentions", cache_key, normalised)
     return normalised
 
 
