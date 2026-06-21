@@ -33,7 +33,9 @@ from lib import narratives as narrative_lib  # noqa: E402
 from lib import ignore as ignore_list  # noqa: E402
 from sources._base import Source  # noqa: E402
 from sources.coingecko import CoinGecko  # noqa: E402
-from sources.xai import XaiGrok, fetch_kol_posts  # noqa: E402
+from sources.xai import fetch_kol_posts as fetch_xai_kol_posts  # noqa: E402
+from sources.x_api import fetch_kol_posts as fetch_x_api_kol_posts  # noqa: E402
+from sources.x_social import XSocial  # noqa: E402
 from sources.last30days import Last30Days  # noqa: E402
 from sources.defillama import DeFiLlama  # noqa: E402
 from sources.github import GitHub  # noqa: E402
@@ -46,7 +48,7 @@ SOURCES: List[Source] = [
     CoinGecko(),
     DeFiLlama(),
     GitHub(),
-    XaiGrok(),
+    XSocial(),
     Last30Days(),
     Perplexity(),
 ]
@@ -68,6 +70,11 @@ KEY_GUIDE: Dict[str, Dict[str, str]] = {
         "url": "https://console.x.ai/",
         "desc": "xAI grok-search — KOL feed tracking, first-mention auto-scout",
         "priority": "highly recommended",
+    },
+    "X_BEARER_TOKEN": {
+        "url": "https://console.x.com/",
+        "desc": "X API v2 bearer — deterministic public KOL timelines/search fallback",
+        "priority": "recommended fallback",
     },
     "PERPLEXITY_API_KEY": {
         "url": "https://www.perplexity.ai/account/api/keys",
@@ -884,12 +891,42 @@ def cmd_store_trending(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _has_kol_source(keys: Dict[str, Optional[str]]) -> bool:
+    return bool(keys.get("XAI_API_KEY") or keys.get("X_BEARER_TOKEN"))
+
+
+def _fetch_kol_posts_with_fallback(
+    handle: str,
+    keys: Dict[str, Optional[str]],
+    since_hours: int = 24,
+    limit: int = 10,
+) -> tuple[str, List[Dict[str, Any]]]:
+    """Fetch KOL posts via xAI first, then raw X API v2.
+
+    Empty xAI results are treated as inconclusive because quota/spend failures
+    can degrade to an empty response; X API confirms the raw public timeline.
+    """
+    xai_key = keys.get("XAI_API_KEY")
+    if xai_key:
+        posts = fetch_xai_kol_posts(handle, xai_key, since_hours=since_hours, limit=limit)
+        if posts:
+            for post in posts:
+                post.setdefault("source", "xai")
+            return "xai", posts
+
+    bearer = keys.get("X_BEARER_TOKEN")
+    if bearer:
+        posts = fetch_x_api_kol_posts(handle, bearer, since_hours=since_hours, limit=limit)
+        return "x_api", posts
+
+    return "none", []
+
+
 def cmd_first_mentions(args: argparse.Namespace) -> int:
     """Run the KOL first-mention auto-scout pass in isolation."""
     keys = all_keys()
-    xai_key = keys.get("XAI_API_KEY")
-    if not xai_key:
-        print("XAI_API_KEY required.")
+    if not _has_kol_source(keys):
+        print("XAI_API_KEY or X_BEARER_TOKEN required.")
         return 1
     since = args.since_hours
     kols = kol_lib.load_all()
@@ -897,8 +934,8 @@ def cmd_first_mentions(args: argparse.Namespace) -> int:
     all_posts: List[Dict[str, Any]] = []
     for kol in kols:
         handle = kol.get("handle")
-        posts = fetch_kol_posts(handle, xai_key, since_hours=since, limit=15)
-        print(f"  @{handle}: {len(posts)} posts")
+        provider, posts = _fetch_kol_posts_with_fallback(handle, keys, since_hours=since, limit=15)
+        print(f"  @{handle}: {len(posts)} posts via {provider}")
         all_posts.extend(posts)
     if not all_posts:
         print("No posts retrieved.")
@@ -919,9 +956,8 @@ def cmd_first_mentions(args: argparse.Namespace) -> int:
 def cmd_kols(args: argparse.Namespace) -> int:
     """Fetch recent posts from every tracked KOL. Prints a digest."""
     keys = all_keys()
-    xai_key = keys.get("XAI_API_KEY")
-    if not xai_key:
-        print("XAI_API_KEY not found — cannot fetch KOL feeds. Add key to ~/.config/shared/.env.")
+    if not _has_kol_source(keys):
+        print("XAI_API_KEY or X_BEARER_TOKEN not found — cannot fetch KOL feeds. Add one to ~/.config/shared/.env.")
         return 1
     kols = kol_lib.load_all()
     if not kols:
@@ -933,10 +969,11 @@ def cmd_kols(args: argparse.Namespace) -> int:
     for kol in kols:
         handle = kol.get("handle")
         print(f"[@{handle}] fetching...")
-        posts = fetch_kol_posts(handle, xai_key, since_hours=since, limit=10)
+        provider, posts = _fetch_kol_posts_with_fallback(handle, keys, since_hours=since, limit=10)
         if not posts:
-            print(f"  (no posts returned)")
+            print(f"  (no posts returned via {provider})")
             continue
+        print(f"  source={provider}")
         for post in posts:
             tickers = ", ".join(post.get("tickers") or []) or "—"
             date = post.get("date", "")[:19]
@@ -1065,27 +1102,26 @@ def cmd_daily(_args: argparse.Namespace) -> int:
     # 5. KOL digest — parallelise across handles so slow xAI calls don't queue
     print("\n[kols] running KOL digest...")
     kol_posts: List[Dict[str, Any]] = []
-    xai_key = keys.get("XAI_API_KEY")
-    if xai_key:
+    if _has_kol_source(keys):
         tracked_kols = kol_lib.load_all()
         kol_t0 = time.time()
         with ThreadPoolExecutor(max_workers=max(1, len(tracked_kols))) as pool:
             future_to_handle = {
-                pool.submit(fetch_kol_posts, kol.get("handle"), xai_key, 24, 10): kol.get("handle")
+                pool.submit(_fetch_kol_posts_with_fallback, kol.get("handle"), keys, 24, 10): kol.get("handle")
                 for kol in tracked_kols
             }
             for fut in as_completed(future_to_handle):
                 handle = future_to_handle[fut]
                 try:
-                    posts = fut.result()
+                    provider, posts = fut.result()
                 except Exception as exc:  # noqa: BLE001
                     print(f"  @{handle}: error: {exc}")
                     continue
                 kol_posts.extend(posts)
-                print(f"  @{handle}: {len(posts)} posts")
+                print(f"  @{handle}: {len(posts)} posts via {provider}")
         print(f"  (kol digest wall: {time.time() - kol_t0:.1f}s)")
     else:
-        print("  (skipped — no XAI_API_KEY)")
+        print("  (skipped — no XAI_API_KEY or X_BEARER_TOKEN)")
 
     # 6. KOL first-mention auto-scout
     first_mention_results: List[Dict[str, Any]] = []

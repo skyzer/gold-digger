@@ -13,9 +13,17 @@ See README.md for the summary matrix. This file is the deep dive: what each key 
 ## XAI_API_KEY
 
 - **What it unlocks:** KOL feed polling via grok-search, first-mention ticker extraction, X announcements, sentiment on project tweets
-- **Without it:** No KOL digest. Cannot follow DegenSensei / resdegen / any X-native signal. First-mention auto-scout disabled.
+- **Without it:** Gold Digger falls back to `X_BEARER_TOKEN` if configured. Without either key, no KOL digest. Cannot follow DegenSensei / resdegen / any X-native signal. First-mention auto-scout disabled.
 - **Get it:** https://console.x.ai/ (pay-as-you-go)
 - **Env var:** `XAI_API_KEY`
+
+## X_BEARER_TOKEN
+
+- **What it unlocks:** Raw X API v2 public timelines/search as a deterministic fallback for KOL feeds, first-mentions, and mention counts
+- **Without it:** If xAI is unavailable or over spending limit, KOL digest and X mention velocity degrade to no social signal.
+- **Get it:** https://console.x.com/ → app → Keys and tokens → Bearer Token
+- **Env var:** `X_BEARER_TOKEN`
+- **Notes:** X API billing is separate from X Premium/Grok subscriptions. Gold Digger uses daily caching and `X_API_DAILY_MAX_CALLS` to cap spend.
 
 ## PERPLEXITY_API_KEY
 

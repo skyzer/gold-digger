@@ -52,6 +52,7 @@ JSON_SEARCH_PATHS: List[Path] = [
 KNOWN_KEYS: Dict[str, str] = {
     "COINGECKO_API_KEY": "CoinGecko — price, mcap, supply, new-listing scout",
     "XAI_API_KEY": "xAI grok-search — KOL feeds, first-mention auto-scout",
+    "X_BEARER_TOKEN": "X API v2 — public KOL timelines/search fallback",
     "PERPLEXITY_API_KEY": "Perplexity — cited deep-research for DD subagent",
     "BRAVE_API_KEY": "Brave Search — open-web scout (free 2k/mo)",
     "EXA_API_KEY": "Exa — semantic search scout (free 1k/mo)",
