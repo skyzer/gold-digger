@@ -233,7 +233,8 @@ Nothing is required. Gold Digger runs with zero keys — just with progressively
 | `COINGECKO_API_KEY` | Free Demo / Pro paid | Price, mcap, FDV, 24h/7d/30d %, supply, exchange listings, new-listing scout | **Severe** — no price data, no new-token scout |
 | `DEFILLAMA` *(no key)* | Free | TVL, revenue/fees, AI-tagged protocol scout | No TVL, no DeFi scout |
 | `GITHUB_TOKEN` | Free via `gh` | Commits/stars Δ, dev-to-price divergence | No GitHub signals |
-| `XAI_API_KEY` | ~$0.02–0.20/call | KOL feeds, first-mention auto-scout, X announcements | **Major** — no KOL digest, no X alpha |
+| `XAI_API_KEY` | ~$0.02–0.20/call | Grok-powered KOL feeds, first-mention auto-scout, X announcements | Falls back to raw X API if `X_BEARER_TOKEN` is set |
+| `X_BEARER_TOKEN` | X API pay-per-use | Raw public KOL timelines/search fallback, local ticker extraction | No deterministic X fallback when xAI is unavailable |
 | `PERPLEXITY_API_KEY` | Paid, cheap | Cited deep-research for DD subagent | Research falls back to raw search |
 | `BRAVE_API_KEY` | Free 2k/mo | Open-web scout for pre-launch teasers | Web scout limited |
 | `EXA_API_KEY` | Free 1k/mo | Semantic-search scout ("projects like ai16z") | Alt to Brave |
@@ -242,7 +243,7 @@ Nothing is required. Gold Digger runs with zero keys — just with progressively
 | `BSKY_HANDLE` + `BSKY_APP_PASSWORD` | Free | Bluesky chatter | Minor |
 | `yt-dlp` binary | Free | YouTube crypto channels | No YT signals |
 
-**Minimum recommended:** `COINGECKO_API_KEY` + `XAI_API_KEY` + `BRAVE_API_KEY`. That unlocks the core price/KOL/web triad.
+**Minimum recommended:** `COINGECKO_API_KEY` + (`XAI_API_KEY` or `X_BEARER_TOKEN`) + `BRAVE_API_KEY`. That unlocks the core price/KOL/web triad.
 
 ---
 

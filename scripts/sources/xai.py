@@ -233,7 +233,7 @@ def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 1
     if not text:
         return []
     posts = _extract_json_array(text)
-    if not posts:
+    if posts is None:
         return []
     # Normalise + attach extracted tickers
     normalised: List[Dict[str, Any]] = []
@@ -252,7 +252,7 @@ def fetch_kol_posts(handle: str, key: str, since_hours: int = 24, limit: int = 1
     return normalised
 
 
-def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int = 20) -> List[Dict[str, Any]]:
+def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int = 20) -> Optional[List[Dict[str, Any]]]:
     """Search X broadly for mentions of a project/ticker (not handle-restricted).
     Used for mention-count aggregation across all of X."""
     if not key:
@@ -275,13 +275,13 @@ def search_x_mentions(query: str, key: str, since_hours: int = 168, limit: int =
     }
     response = _post(body, key, timeout=20)
     if not response:
-        return []
+        return None
     text = _extract_message_text(response)
     if not text:
-        return []
+        return None
     parsed = _extract_json_array(text)
-    if not parsed:
-        return []
+    if parsed is None:
+        return None
     normalised = [p for p in parsed if isinstance(p, dict)]
     _cache_store_current("mentions", cache_key, normalised)
     return normalised
@@ -306,6 +306,8 @@ class XaiGrok(Source):
         else:
             return {}
         mentions = search_x_mentions(query, key, since_hours=168, limit=25)
+        if mentions is None:
+            return {}
         return {
             "mention_count_7d": len(mentions),
         }
