@@ -74,6 +74,10 @@ def project_dd_prompt(project: Dict[str, Any]) -> str:
     twitter = project.get("twitter")
     website = project.get("website")
     github = project.get("github")
+    docs = project.get("docs")
+    coingecko_id = project.get("coingecko_id")
+    chains = project.get("chains") or []
+    exchanges = project.get("exchanges") or []
     ticker_str = f" (${ticker})" if ticker else ""
     context_parts = [f"Project: {name}{ticker_str}"]
     if twitter:
@@ -82,25 +86,56 @@ def project_dd_prompt(project: Dict[str, Any]) -> str:
         context_parts.append(f"Website: {website}")
     if github:
         context_parts.append(f"GitHub: {github}")
+    if docs:
+        context_parts.append(f"Docs: {docs}")
+    if coingecko_id:
+        context_parts.append(f"CoinGecko id: {coingecko_id}")
+    if chains:
+        context_parts.append(f"Known chains: {', '.join(chains)}")
+    if exchanges:
+        context_parts.append(f"Known exchanges/pools: {', '.join(exchanges[:10])}")
+    for field, label in (
+        ("price_usd", "Current price USD"),
+        ("mcap", "Current market cap USD"),
+        ("fdv", "Current FDV USD"),
+        ("circulating_supply", "Circulating supply"),
+        ("total_supply", "Total supply"),
+        ("max_supply", "Max supply"),
+        ("tge_date", "TGE date"),
+        ("listed_since", "Listed since"),
+        ("github_stars", "GitHub stars"),
+        ("github_commits_30d", "GitHub commits 30d"),
+        ("github_contributors", "GitHub contributors"),
+    ):
+        value = project.get(field)
+        if value not in (None, "", []):
+            context_parts.append(f"{label}: {value}")
     context = "\n".join(context_parts)
-    return f"""Conduct crypto/AI due diligence on this project. Be concise, cite sources.
+    return f"""Conduct crypto/AI due diligence on this project for a high-risk asymmetric-bet investor. Be concise, cite sources, and do not invent missing data.
 
 {context}
 
-Answer each question with a short paragraph (2-4 sentences) and cite sources:
+Answer each question with a short paragraph or compact table where useful. Cite sources for factual claims and call out uncertainty or source conflicts clearly:
 
 1. What is {name} in one sentence?
-2. Does it have a token live today? What's the current status (live / announced / rumored / none)?
-3. Is there a points/airdrop farming program active? Any end date?
-4. Has the project raised funding? Latest round, amount, lead investors if known.
-5. What's the product/network status? Testnet, mainnet, beta, live with users?
-6. Who's building it? Team pedigree if public.
-7. What narrative does it belong to (AI agents, DePIN, RWA, infra, etc.)?
-8. Any major recent announcements (last 30 days)?
-9. Notable risks or red flags?
-10. What would a 10-100x bullcase for this project look like over the next 12 months?
+2. Who is behind it? Include public founders/team, company/legal entity, investor pedigree, and official contact paths if available.
+3. Does it have a token live today? Give token status (live / announced / rumored / none), chain(s), official contract address(es), and whether the address is verified by official sources.
+4. When was the token TGE or first tradable listing? If the date is uncertain, explain the evidence and uncertainty.
+5. Summarize tokenomics: supply, circulating vs FDV, allocations, unlocks/vesting, emissions, burns, staking, and any known team/VC wallets.
+6. Explain token value capture: fees, revenue share, buybacks/burns, staking, governance, network demand, or no clear capture. Distinguish real rights from marketing claims.
+7. Show current market data: price, market cap, FDV, 24h volume, 24h/7d/30d changes, and a last-14-days market-cap series if available.
+8. Assess liquidity and holder risk: main DEX/CEX venues, pool liquidity, volume quality, slippage risk, holder concentration, contract ownership/mint/freeze controls if visible.
+9. Is there a points/airdrop farming program active? Any end date, snapshot, claim, or migration risk?
+10. Has the project raised funding? Latest round, amount, lead investors, valuation if known, and whether the announcement is official or press-only.
+11. What is the product/network status? Include site, app, docs, API, testnet/mainnet/beta/live usage, and any signs of broken infrastructure.
+12. What is the code activity? Include official GitHub repos, stars, contributors, recent commits, and an active-vs-abandoned read.
+13. What narrative does it belong to (AI agents, DePIN, RWA, infra, data, Bittensor subnet, etc.) and what comparable projects should it be benchmarked against?
+14. Any major announcements or catalysts in the last 30 days?
+15. Notable risks, red flags, source conflicts, or things that must be verified before deploying capital.
+16. What would a 10-100x bull case look like over the next 12 months, and what evidence would confirm or kill it?
+17. Final buy/no-buy read for today: best entry zone, position sizing style, play/risk, downside scenario, and time sensitivity.
 
-Focus on fact-based sources: project docs, reputable news, GitHub, on-chain data, VC announcements."""
+Focus on fact-based sources: official project docs, reputable news, GitHub, CoinGecko/GeckoTerminal/Dexscreener, block explorers, on-chain data, VC announcements, and official social posts."""
 
 
 class Perplexity(Source):

@@ -66,6 +66,7 @@ def empty_project(slug: str, name: str | None = None) -> Dict[str, Any]:
         "airdrop_eligible": "unknown",
         "features_shipped_30d": [],
         "partnerships_30d": [],
+        "recent_announcements_30d": [],
         "upcoming_tge": None,
 
         # KOL signal
