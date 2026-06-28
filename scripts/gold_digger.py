@@ -793,10 +793,18 @@ def cmd_research(args: argparse.Namespace) -> int:
         "## Current data",
         "",
         f"- **Ticker:** {project.get('ticker') or '—'}",
+        f"- **Chains:** {', '.join(project.get('chains') or []) or '—'}",
         f"- **Price:** ${project.get('price_usd') or '—'}",
         f"- **Mcap:** ${project.get('mcap') or '—'}",
-        f"- **30d change:** {project.get('change_30d_pct') or '—'}%",
-        f"- **GitHub stars:** {project.get('github_stars') or '—'}",
+        f"- **FDV:** ${project.get('fdv') or '—'}",
+        f"- **24h / 7d / 30d:** {project.get('change_24h_pct') or '—'}% / {project.get('change_7d_pct') or '—'}% / {project.get('change_30d_pct') or '—'}%",
+        f"- **Supply:** circ {project.get('circulating_supply') or '—'} · total {project.get('total_supply') or '—'} · max {project.get('max_supply') or '—'}",
+        f"- **TGE / listed since:** {project.get('tge_date') or '—'} / {project.get('listed_since') or '—'}",
+        f"- **Exchanges:** {', '.join(project.get('exchanges') or []) or '—'}",
+        f"- **Website:** {project.get('website') or '—'}",
+        f"- **Docs:** {project.get('docs') or '—'}",
+        f"- **GitHub:** {project.get('github') or '—'}",
+        f"- **GitHub stars / commits 30d / contributors:** {project.get('github_stars') or '—'} / {project.get('github_commits_30d') or '—'} / {project.get('github_contributors') or '—'}",
         f"- **Mentions 7d:** {project.get('mention_count_7d') or 0}",
         "",
         "## Research brief",
@@ -1167,7 +1175,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_kols.add_argument("--since-hours", type=int, default=24)
     p_kols.set_defaults(func=cmd_kols)
 
-    p_research = sub.add_parser("research", help="cited deep-dive via Perplexity")
+    p_research = sub.add_parser(
+        "research",
+        help="full cited coin/project DD: team, token/TGE, value capture, liquidity, code activity, buy/no-buy",
+        description=(
+            "Run full cited coin/project due diligence: team, token/TGE, "
+            "official contracts, tokenomics/value capture, 14d mcap, liquidity, "
+            "code activity, catalysts, risks, and buy/no-buy read."
+        ),
+    )
     p_research.add_argument("slug", help="project slug to research")
     p_research.set_defaults(func=cmd_research)
 

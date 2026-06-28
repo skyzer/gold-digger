@@ -35,6 +35,10 @@ python3 ~/projects/gold-digger/scripts/gold_digger.py daily
 # Enrich a single project (handy for testing / on-demand research)
 python3 ~/projects/gold-digger/scripts/gold_digger.py enrich <slug>
 
+# Full cited coin/project DD (team, token/TGE, value capture, liquidity,
+# code activity, catalysts, risks, and buy/no-buy read)
+python3 ~/projects/gold-digger/scripts/gold_digger.py research <slug>
+
 # Scout pass only
 python3 ~/projects/gold-digger/scripts/gold_digger.py scout
 
