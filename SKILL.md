@@ -22,7 +22,9 @@ Trigger on any of:
 
 ## Architecture (two-sentence version)
 
-Gold Digger is a thin crypto-research layer over [last30days](https://github.com/mvanhorn/last30days-skill) + direct calls to CoinGecko / DeFiLlama / GitHub / Perplexity. It maintains a markdown-native watchlist (one `.md` per project with frontmatter), runs enrichment + scout + aggregation daily, and writes structured reports that link back to the project pages.
+Gold Digger is a thin crypto-research layer over [last30days](https://github.com/mvanhorn/last30days-skill), verified SuperGrok OAuth `x_search`, and direct calls to CoinGecko / DeFiLlama / GitHub / Perplexity. It maintains a markdown-native watchlist (one `.md` per project with frontmatter), runs enrichment + scout + aggregation daily, and writes structured reports that link back to the project pages.
+
+The X path is host-agent independent. Claude Code, Codex, OpenClaw, Hermes, and plain scheduled processes all run the same Gold Digger Python CLI. Hermes v0.14.0+ is used only as the local OAuth/tool bridge; the calling agent may keep its own model and runtime. If `hermes` is not on the service PATH, set `GOLD_DIGGER_HERMES_BIN` to the executable.
 
 ## How to run
 
@@ -59,7 +61,8 @@ Do not ask the user for API keys in conversation. Keys live in the environment o
 
 Every source is optional. Gold Digger prefers to run in degraded mode rather than fail:
 - **No `COINGECKO_API_KEY`** — skip price/mcap enrichment; still write identity + social frontmatter
-- **No `XAI_API_KEY`** — skip KOL digest and first-mention scout; still run watchlist enrichment and market-data scout
+- **No SuperGrok `xai-oauth` bridge available to the host agent** — skip X/KOL signal by default; separately billed `XAI_API_KEY` and `X_BEARER_TOKEN` paths require explicit `GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1` opt-in
+- **Hermes OAuth returns 401/403 or unverified provenance** — stop the X path; never silently switch to a paid API credential
 - **No `PERPLEXITY_API_KEY`** — deep-dive subagent falls back to raw Brave/Exa results
 - **No `last30days` installed** — skip social aggregation; still run direct-API enrichment
 - **All sources missing** — still runs; emits a report explaining which keys would unlock which features and stops

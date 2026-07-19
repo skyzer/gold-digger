@@ -10,17 +10,30 @@ See README.md for the summary matrix. This file is the deep dive: what each key 
 - **Env var:** `COINGECKO_API_KEY`
 - **Optional tier override:** `COINGECKO_TIER=pro` (default: demo endpoint)
 
-## XAI_API_KEY
+## SuperGrok xai-oauth bridge (default for every agent host)
 
-- **What it unlocks:** KOL feed polling via grok-search, first-mention ticker extraction, X announcements, sentiment on project tweets
-- **Without it:** Gold Digger falls back to `X_BEARER_TOKEN` if configured. Without either key, no KOL digest. Cannot follow DegenSensei / resdegen / any X-native signal. First-mention auto-scout disabled.
+- **What it unlocks:** subscription-backed Hermes `x_search` for KOL feeds, first-mention ticker extraction, X announcements, and project mention counts
+- **Host compatibility:** Claude Code, Codex, OpenClaw, Hermes, other skill hosts, and cron all use the same Gold Digger CLI; Hermes is a companion OAuth/tool bridge, not a required main agent
+- **Requirement:** Hermes Agent v0.14.0+ and a SuperGrok account authorized through browser OAuth
+- **Configure:** `hermes auth add xai-oauth`, then `hermes tools enable x_search`
+- **Service PATH:** Gold Digger also checks `~/.local/bin/hermes`; set `GOLD_DIGGER_HERMES_BIN=/absolute/path/to/hermes` for isolated agent services
+- **Verify safely:** `hermes auth list xai-oauth` (credential metadata only; never inspect or copy raw OAuth tokens)
+- **Runtime verification:** Gold Digger exports the Hermes tool session and accepts only `credential_source: xai-oauth`
+- **Failure policy:** 401/403, missing provenance, or `credential_source: xai` fails closed; no silent paid fallback
+
+## XAI_API_KEY (optional, separately billed fallback)
+
+- **What it unlocks:** the legacy direct xAI developer API path when SuperGrok OAuth is not configured
+- **Default:** disabled even when the key exists
+- **Approval gate:** set `GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1` for the specific run after approving separately billed API usage
 - **Get it:** https://console.x.ai/ (pay-as-you-go)
 - **Env var:** `XAI_API_KEY`
 
 ## X_BEARER_TOKEN
 
 - **What it unlocks:** Raw X API v2 public timelines/search as a deterministic fallback for KOL feeds, first-mentions, and mention counts
-- **Without it:** If xAI is unavailable or over spending limit, KOL digest and X mention velocity degrade to no social signal.
+- **Default:** disabled even when the token exists; uses the same explicit `GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1` approval gate
+- **Without it:** If SuperGrok OAuth is absent and no paid fallback is approved, KOL digest and X mention velocity degrade to no social signal.
 - **Get it:** https://console.x.com/ → app → Keys and tokens → Bearer Token
 - **Env var:** `X_BEARER_TOKEN`
 - **Notes:** X API billing is separate from X Premium/Grok subscriptions. Gold Digger uses daily caching and `X_API_DAILY_MAX_CALLS` to cap spend.
