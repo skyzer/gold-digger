@@ -33,6 +33,8 @@ from lib import narratives as narrative_lib  # noqa: E402
 from lib import ignore as ignore_list  # noqa: E402
 from sources._base import Source  # noqa: E402
 from sources.coingecko import CoinGecko  # noqa: E402
+from sources import hermes_x  # noqa: E402
+from sources.hermes_x import fetch_kol_posts as fetch_hermes_kol_posts  # noqa: E402
 from sources.xai import fetch_kol_posts as fetch_xai_kol_posts  # noqa: E402
 from sources.x_api import fetch_kol_posts as fetch_x_api_kol_posts  # noqa: E402
 from sources.x_social import XSocial  # noqa: E402
@@ -70,13 +72,13 @@ KEY_GUIDE: Dict[str, Dict[str, str]] = {
     },
     "XAI_API_KEY": {
         "url": "https://console.x.ai/",
-        "desc": "xAI grok-search — KOL feed tracking, first-mention auto-scout",
-        "priority": "highly recommended",
+        "desc": "xAI developer API — optional paid fallback for X search",
+        "priority": "opt-in fallback",
     },
     "X_BEARER_TOKEN": {
         "url": "https://console.x.com/",
-        "desc": "X API v2 bearer — deterministic public KOL timelines/search fallback",
-        "priority": "recommended fallback",
+        "desc": "X API v2 — optional paid fallback for public timelines/search",
+        "priority": "opt-in fallback",
     },
     "PERPLEXITY_API_KEY": {
         "url": "https://www.perplexity.ai/account/api/keys",
@@ -123,10 +125,11 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print()
     print("Available sources:")
     keys = all_keys()
+    oauth_ready, oauth_reason = hermes_x.oauth_status()
+    print(f"  - {'hermes_xai_oauth':<20} {'OK' if oauth_ready else 'UNAVAILABLE'}: {oauth_reason}")
     for src in SOURCES:
-        status = "OK" if src.available(keys) else "MISSING: " + ", ".join(
-            k for k in src.requires_keys if not keys.get(k)
-        )
+        missing = ", ".join(k for k in src.requires_keys if not keys.get(k))
+        status = "OK" if src.available(keys) else f"UNAVAILABLE{': ' + missing if missing else ''}"
         print(f"  - {src.name:<20} {status}")
     print()
     print("Missing keys? Run `gold-digger setup --interactive` to add them.")
@@ -151,6 +154,10 @@ def _cmd_setup_interactive() -> int:
 
     # Step 1: show what's already configured
     print("Checking existing configuration...\n")
+    oauth_ready, oauth_reason = hermes_x.oauth_status()
+    print(f"  {'✓' if oauth_ready else '✗'} {'Hermes xai-oauth':<24} {oauth_reason}")
+    if not oauth_ready:
+        print("    Configure with: hermes auth add xai-oauth && hermes tools enable x_search")
     found_count = 0
     missing = []
     for key_name in KEY_GUIDE:
@@ -170,6 +177,9 @@ def _cmd_setup_interactive() -> int:
     # Step 2: prompt for each missing key
     new_keys: Dict[str, str] = {}
     for key_name in missing:
+        if key_name in {"XAI_API_KEY", "X_BEARER_TOKEN"} and not hermes_x.paid_fallback_allowed():
+            print(f"\n─── {key_name} skipped (paid fallback not explicitly enabled) ───")
+            continue
         guide = KEY_GUIDE[key_name]
         print(f"\n─── {key_name} ({guide['priority']}) ───")
         print(f"  {guide['desc']}")
@@ -313,6 +323,8 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
 
     # Sources
     print(f"\n[Data Sources]")
+    oauth_ready, oauth_reason = hermes_x.oauth_status()
+    print(f"  {'✓' if oauth_ready else '✗'} {'hermes_xai_oauth':<20} {oauth_reason}")
     for src in SOURCES:
         if src.available(keys):
             print(f"  ✓ {src.name:<20} ready")
@@ -322,7 +334,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
 
     # Dependencies
     print(f"\n[Dependencies]")
-    for binary in ("python3", "uv", "gh", "git"):
+    for binary in ("python3", "uv", "gh", "git", "hermes"):
         path = _shutil.which(binary)
         status = path if path else "NOT FOUND"
         print(f"  {'✓' if path else '✗'} {binary:<20} {status}")
@@ -902,7 +914,10 @@ def cmd_store_trending(_args: argparse.Namespace) -> int:
 
 
 def _has_kol_source(keys: Dict[str, Optional[str]]) -> bool:
-    return bool(keys.get("XAI_API_KEY") or keys.get("X_BEARER_TOKEN"))
+    return hermes_x.available() or (
+        hermes_x.paid_fallback_allowed()
+        and bool(keys.get("XAI_API_KEY") or keys.get("X_BEARER_TOKEN"))
+    )
 
 
 def _fetch_kol_posts_with_fallback(
@@ -911,11 +926,19 @@ def _fetch_kol_posts_with_fallback(
     since_hours: int = 24,
     limit: int = 10,
 ) -> tuple[str, List[Dict[str, Any]]]:
-    """Fetch KOL posts via xAI first, then raw X API v2.
+    """Fetch KOL posts via verified SuperGrok OAuth, then approved fallbacks."""
+    if hermes_x.available():
+        posts = fetch_hermes_kol_posts(handle, since_hours=since_hours, limit=limit)
+        if posts is None:
+            # A configured OAuth path that fails provenance/auth/entitlement
+            # checks must not silently incur developer API charges.
+            reason = hermes_x.last_error() or "unknown error"
+            return f"xai-oauth-error ({reason})", []
+        return "xai-oauth", posts
 
-    Empty xAI results are treated as inconclusive because quota/spend failures
-    can degrade to an empty response; X API confirms the raw public timeline.
-    """
+    if not hermes_x.paid_fallback_allowed():
+        return "none (paid fallback not approved)", []
+
     xai_key = keys.get("XAI_API_KEY")
     if xai_key:
         posts = fetch_xai_kol_posts(handle, xai_key, since_hours=since_hours, limit=limit)
@@ -936,7 +959,7 @@ def cmd_first_mentions(args: argparse.Namespace) -> int:
     """Run the KOL first-mention auto-scout pass in isolation."""
     keys = all_keys()
     if not _has_kol_source(keys):
-        print("XAI_API_KEY or X_BEARER_TOKEN required.")
+        print("Hermes xai-oauth required. Paid fallbacks require GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1.")
         return 1
     since = args.since_hours
     kols = kol_lib.load_all()
@@ -967,7 +990,7 @@ def cmd_kols(args: argparse.Namespace) -> int:
     """Fetch recent posts from every tracked KOL. Prints a digest."""
     keys = all_keys()
     if not _has_kol_source(keys):
-        print("XAI_API_KEY or X_BEARER_TOKEN not found — cannot fetch KOL feeds. Add one to ~/.config/shared/.env.")
+        print("Hermes xai-oauth not ready. Paid fallbacks require explicit GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1 opt-in.")
         return 1
     kols = kol_lib.load_all()
     if not kols:
@@ -1131,7 +1154,7 @@ def cmd_daily(_args: argparse.Namespace) -> int:
                 print(f"  @{handle}: {len(posts)} posts via {provider}")
         print(f"  (kol digest wall: {time.time() - kol_t0:.1f}s)")
     else:
-        print("  (skipped — no XAI_API_KEY or X_BEARER_TOKEN)")
+        print("  (skipped — Hermes xai-oauth unavailable; paid fallback not enabled or not configured)")
 
     # 6. KOL first-mention auto-scout
     first_mention_results: List[Dict[str, Any]] = []

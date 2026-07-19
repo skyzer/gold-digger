@@ -1,14 +1,15 @@
 """Combined X social signal source.
 
-Preferred path is xAI `x_search` because it can reason over X results. When
-xAI is unfunded or fails, fall back to raw X API v2 reads using X_BEARER_TOKEN.
+Preferred path is Hermes ``x_search`` backed by SuperGrok OAuth. Separately
+billed xAI/X API credentials are only used when OAuth is not configured and
+the operator explicitly enables paid fallback.
 """
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
 from sources._base import Source
-from sources import x_api, xai
+from sources import hermes_x, x_api, xai
 
 
 class XSocial(Source):
@@ -17,7 +18,10 @@ class XSocial(Source):
     optional_keys = ["XAI_API_KEY", "X_BEARER_TOKEN"]
 
     def available(self, keys: Dict[str, Optional[str]]) -> bool:
-        return bool(keys.get("XAI_API_KEY") or keys.get("X_BEARER_TOKEN"))
+        return hermes_x.available() or (
+            hermes_x.paid_fallback_allowed()
+            and bool(keys.get("XAI_API_KEY") or keys.get("X_BEARER_TOKEN"))
+        )
 
     def fetch_watchlist(self, project: Dict[str, Any], keys: Dict[str, Optional[str]]) -> Dict[str, Any]:
         ticker = project.get("ticker")
@@ -27,6 +31,17 @@ class XSocial(Source):
         elif name:
             xai_query = name
         else:
+            return {}
+
+        if hermes_x.available():
+            mentions = hermes_x.search_x_mentions(xai_query, since_hours=168, limit=25)
+            if mentions is not None:
+                return {"mention_count_7d": len(mentions)}
+            # Never silently switch credentials after an OAuth auth,
+            # entitlement, rate-limit, or provenance failure.
+            return {}
+
+        if not hermes_x.paid_fallback_allowed():
             return {}
 
         xai_key = keys.get("XAI_API_KEY")

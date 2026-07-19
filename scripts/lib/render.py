@@ -194,7 +194,7 @@ def write_daily_reports(
                     lines.append(f"  [{url}]({url})")
             lines.append("")
     else:
-        lines.append("_No KOL posts retrieved (check XAI_API_KEY or X_BEARER_TOKEN)._")
+        lines.append("_No KOL posts retrieved (check Hermes xai-oauth; paid API fallbacks require explicit opt-in)._")
     lines.append("")
 
     # 3.5. KOL first-mentions (auto-scout)

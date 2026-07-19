@@ -82,6 +82,39 @@ gold-digger daily
 
 Reports land in `data/reports/daily/YYYY-MM-DD.md` inside the repo. The `data/` directory is gitignored — your research stays local.
 
+### SuperGrok OAuth for X search (default)
+
+Gold Digger uses Hermes's built-in `x_search` tool for KOL feeds and X mention searches. The default credential path is a SuperGrok browser OAuth credential (`xai-oauth`), not the separately billed xAI developer API.
+
+```bash
+# Hermes v0.14.0+ is required
+hermes --version
+
+# Configure SuperGrok OAuth in Hermes (browser consent)
+hermes auth add xai-oauth
+
+# Verify metadata only; this never prints raw access/refresh tokens
+hermes auth list xai-oauth
+
+# Enable the toolset globally (Gold Digger also requests it per run)
+hermes tools enable x_search
+gold-digger setup
+```
+
+Gold Digger accepts X results only after exporting the Hermes session and verifying the actual tool result says `credential_source: xai-oauth`. It does not trust a model's summary of which credential was used. A missing source, `credential_source: xai`, 401, or 403 fails closed and does not silently switch to paid API usage.
+
+Separately billed fallback is disabled by default even if `XAI_API_KEY` or `X_BEARER_TOKEN` is present. An operator must explicitly approve it for that process:
+
+```bash
+GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1 gold-digger daily
+```
+
+Paid fallback is considered only when SuperGrok OAuth is not configured. If configured OAuth is rejected or lacks entitlement, re-authenticate or fix the subscription instead of silently charging an API key.
+
+### What the nightly run does
+
+`gold-digger daily` runs the same pipeline used by scheduled nightly jobs: watchlist enrichment (market, GitHub, news, and X mention counts), scout discovery, snapshot/velocity aggregation, KOL post retrieval, first-mention classification, then full and brief Markdown reports. X searches use the verified Hermes/SuperGrok path above and are cached for 30 minutes (KOL posts) or 60 minutes (broader mentions), so a quick retry does not repeat every search.
+
 ### Where your API keys live
 
 Gold Digger checks **17 locations** for API keys, so it'll find them wherever you or your harness stored them:
@@ -233,8 +266,9 @@ Nothing is required. Gold Digger runs with zero keys — just with progressively
 | `COINGECKO_API_KEY` | Free Demo / Pro paid | Price, mcap, FDV, 24h/7d/30d %, supply, exchange listings, new-listing scout | **Severe** — no price data, no new-token scout |
 | `DEFILLAMA` *(no key)* | Free | TVL, revenue/fees, AI-tagged protocol scout | No TVL, no DeFi scout |
 | `GITHUB_TOKEN` | Free via `gh` | Commits/stars Δ, dev-to-price divergence | No GitHub signals |
-| `XAI_API_KEY` | ~$0.02–0.20/call | Grok-powered KOL feeds, first-mention auto-scout, X announcements | Falls back to raw X API if `X_BEARER_TOKEN` is set |
-| `X_BEARER_TOKEN` | X API pay-per-use | Raw public KOL timelines/search fallback, local ticker extraction | No deterministic X fallback when xAI is unavailable |
+| Hermes `xai-oauth` | SuperGrok subscription | Default X search, KOL feeds, first-mention auto-scout, X announcements | No X/KOL signal unless an explicitly approved paid fallback is configured |
+| `XAI_API_KEY` | ~$0.02–0.20/call | Optional xAI developer API fallback | Disabled unless `GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1`; never used after an OAuth provenance/auth/entitlement failure |
+| `X_BEARER_TOKEN` | X API pay-per-use | Optional raw public-timeline/search fallback, local ticker extraction | Disabled unless `GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1` |
 | `PERPLEXITY_API_KEY` | Paid, cheap | Cited deep-research for DD subagent | Research falls back to raw search |
 | `BRAVE_API_KEY` | Free 2k/mo | Open-web scout for pre-launch teasers | Web scout limited |
 | `EXA_API_KEY` | Free 1k/mo | Semantic-search scout ("projects like ai16z") | Alt to Brave |
@@ -243,7 +277,7 @@ Nothing is required. Gold Digger runs with zero keys — just with progressively
 | `BSKY_HANDLE` + `BSKY_APP_PASSWORD` | Free | Bluesky chatter | Minor |
 | `yt-dlp` binary | Free | YouTube crypto channels | No YT signals |
 
-**Minimum recommended:** `COINGECKO_API_KEY` + (`XAI_API_KEY` or `X_BEARER_TOKEN`) + `BRAVE_API_KEY`. That unlocks the core price/KOL/web triad.
+**Minimum recommended:** `COINGECKO_API_KEY` + Hermes `xai-oauth` + `BRAVE_API_KEY`. That unlocks the core price/KOL/web triad without developer-API X charges.
 
 ---
 
@@ -321,7 +355,8 @@ You can also tune the ignore list — edit [`references/ignore.md`](references/i
 ## Dependencies
 
 - **Python 3.12+**
-- **[last30days](https://github.com/mvanhorn/last30days-skill)** — social and web research engine. Install first; Gold Digger calls it via subprocess for Reddit / HN / YouTube / web signals. Without it, Gold Digger degrades to market data + GitHub + XAI + Perplexity.
+- **[Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.14.0+** with `xai-oauth` for the default subscription-backed X search path
+- **[last30days](https://github.com/mvanhorn/last30days-skill)** — social and web research engine. Install first; Gold Digger calls it via subprocess for Reddit / HN / YouTube / web signals. Without it, Gold Digger degrades to market data + GitHub + Hermes X search + Perplexity.
 - `uv` (recommended) or `pip` for Python deps
 - `gh` CLI (optional, for GitHub auth inheritance)
 
