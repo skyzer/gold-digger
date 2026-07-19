@@ -82,9 +82,11 @@ gold-digger daily
 
 Reports land in `data/reports/daily/YYYY-MM-DD.md` inside the repo. The `data/` directory is gitignored — your research stays local.
 
-### SuperGrok OAuth for X search (default)
+### SuperGrok OAuth for X search — works from every agent host
 
-Gold Digger uses Hermes's built-in `x_search` tool for KOL feeds and X mention searches. The default credential path is a SuperGrok browser OAuth credential (`xai-oauth`), not the separately billed xAI developer API.
+Gold Digger uses SuperGrok browser OAuth (`xai-oauth`) for KOL feeds and X mention searches, not the separately billed xAI developer API. This works regardless of which agent installed or invokes the skill: Claude Code, Codex, OpenClaw, Hermes, another harness, and plain cron all execute the same Gold Digger Python CLI.
+
+Hermes v0.14.0+ is a local companion bridge for the OAuth credential and first-class `x_search` tool. It does **not** need to be the calling agent, main model, or scheduler. Your primary agent can remain Claude, Codex/GPT, OpenClaw, or anything else.
 
 ```bash
 # Hermes v0.14.0+ is required
@@ -100,6 +102,14 @@ hermes auth list xai-oauth
 hermes tools enable x_search
 gold-digger setup
 ```
+
+Gold Digger discovers `hermes` from the invoking agent's `PATH` and also checks `~/.local/bin/hermes`, which helps restricted cron and service environments. If the agent uses a different executable location, configure it explicitly:
+
+```bash
+GOLD_DIGGER_HERMES_BIN=/absolute/path/to/hermes gold-digger daily
+```
+
+OAuth remains in the Hermes credential store for the same operating-system user. Agents share access by invoking the bridge; they do not copy, read, or manage raw OAuth token files.
 
 Gold Digger accepts X results only after exporting the Hermes session and verifying the actual tool result says `credential_source: xai-oauth`. It does not trust a model's summary of which credential was used. A missing source, `credential_source: xai`, 401, or 403 fails closed and does not silently switch to paid API usage.
 
@@ -266,7 +276,7 @@ Nothing is required. Gold Digger runs with zero keys — just with progressively
 | `COINGECKO_API_KEY` | Free Demo / Pro paid | Price, mcap, FDV, 24h/7d/30d %, supply, exchange listings, new-listing scout | **Severe** — no price data, no new-token scout |
 | `DEFILLAMA` *(no key)* | Free | TVL, revenue/fees, AI-tagged protocol scout | No TVL, no DeFi scout |
 | `GITHUB_TOKEN` | Free via `gh` | Commits/stars Δ, dev-to-price divergence | No GitHub signals |
-| Hermes `xai-oauth` | SuperGrok subscription | Default X search, KOL feeds, first-mention auto-scout, X announcements | No X/KOL signal unless an explicitly approved paid fallback is configured |
+| SuperGrok `xai-oauth` bridge | SuperGrok subscription | Default X search for every supported agent host, KOL feeds, first-mention auto-scout, X announcements | No X/KOL signal unless an explicitly approved paid fallback is configured |
 | `XAI_API_KEY` | ~$0.02–0.20/call | Optional xAI developer API fallback | Disabled unless `GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1`; never used after an OAuth provenance/auth/entitlement failure |
 | `X_BEARER_TOKEN` | X API pay-per-use | Optional raw public-timeline/search fallback, local ticker extraction | Disabled unless `GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1` |
 | `PERPLEXITY_API_KEY` | Paid, cheap | Cited deep-research for DD subagent | Research falls back to raw search |
@@ -277,7 +287,7 @@ Nothing is required. Gold Digger runs with zero keys — just with progressively
 | `BSKY_HANDLE` + `BSKY_APP_PASSWORD` | Free | Bluesky chatter | Minor |
 | `yt-dlp` binary | Free | YouTube crypto channels | No YT signals |
 
-**Minimum recommended:** `COINGECKO_API_KEY` + Hermes `xai-oauth` + `BRAVE_API_KEY`. That unlocks the core price/KOL/web triad without developer-API X charges.
+**Minimum recommended:** `COINGECKO_API_KEY` + SuperGrok `xai-oauth` bridge + `BRAVE_API_KEY`. That unlocks the core price/KOL/web triad without developer-API X charges from any agent host.
 
 ---
 
@@ -355,7 +365,7 @@ You can also tune the ignore list — edit [`references/ignore.md`](references/i
 ## Dependencies
 
 - **Python 3.12+**
-- **[Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.14.0+** with `xai-oauth` for the default subscription-backed X search path
+- **[Hermes Agent](https://github.com/NousResearch/hermes-agent) v0.14.0+ companion CLI** with `xai-oauth` for the default subscription-backed X search path; any agent host can invoke it
 - **[last30days](https://github.com/mvanhorn/last30days-skill)** — social and web research engine. Install first; Gold Digger calls it via subprocess for Reddit / HN / YouTube / web signals. Without it, Gold Digger degrades to market data + GitHub + Hermes X search + Perplexity.
 - `uv` (recommended) or `pip` for Python deps
 - `gh` CLI (optional, for GitHub auth inheritance)

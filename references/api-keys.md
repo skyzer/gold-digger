@@ -10,11 +10,13 @@ See README.md for the summary matrix. This file is the deep dive: what each key 
 - **Env var:** `COINGECKO_API_KEY`
 - **Optional tier override:** `COINGECKO_TIER=pro` (default: demo endpoint)
 
-## Hermes xai-oauth (default for X search)
+## SuperGrok xai-oauth bridge (default for every agent host)
 
 - **What it unlocks:** subscription-backed Hermes `x_search` for KOL feeds, first-mention ticker extraction, X announcements, and project mention counts
+- **Host compatibility:** Claude Code, Codex, OpenClaw, Hermes, other skill hosts, and cron all use the same Gold Digger CLI; Hermes is a companion OAuth/tool bridge, not a required main agent
 - **Requirement:** Hermes Agent v0.14.0+ and a SuperGrok account authorized through browser OAuth
 - **Configure:** `hermes auth add xai-oauth`, then `hermes tools enable x_search`
+- **Service PATH:** Gold Digger also checks `~/.local/bin/hermes`; set `GOLD_DIGGER_HERMES_BIN=/absolute/path/to/hermes` for isolated agent services
 - **Verify safely:** `hermes auth list xai-oauth` (credential metadata only; never inspect or copy raw OAuth tokens)
 - **Runtime verification:** Gold Digger exports the Hermes tool session and accepts only `credential_source: xai-oauth`
 - **Failure policy:** 401/403, missing provenance, or `credential_source: xai` fails closed; no silent paid fallback

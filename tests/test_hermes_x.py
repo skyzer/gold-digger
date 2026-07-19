@@ -33,6 +33,18 @@ def test_parse_supported_hermes_version() -> None:
     assert hermes_x._parse_version("Hermes Agent v0.18.2 (2026.7.7.2)") == (0, 18, 2)
 
 
+def test_finds_standard_user_install_when_agent_path_is_restricted(monkeypatch, tmp_path) -> None:
+    binary = tmp_path / ".local" / "bin" / "hermes"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o700)
+    monkeypatch.delenv("GOLD_DIGGER_HERMES_BIN", raising=False)
+    monkeypatch.setattr(hermes_x.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(hermes_x.Path, "home", lambda: tmp_path)
+
+    assert hermes_x._hermes_binary() == str(binary)
+
+
 def test_extract_session_id_uses_last_id() -> None:
     text = "session_id: old\nanswer\nsession_id: 20260719_182746_ad1f76\n"
     assert hermes_x._extract_session_id(text) == "20260719_182746_ad1f76"

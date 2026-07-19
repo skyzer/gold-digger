@@ -126,7 +126,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print("Available sources:")
     keys = all_keys()
     oauth_ready, oauth_reason = hermes_x.oauth_status()
-    print(f"  - {'hermes_xai_oauth':<20} {'OK' if oauth_ready else 'UNAVAILABLE'}: {oauth_reason}")
+    print(f"  - {'supergrok_oauth':<20} {'OK' if oauth_ready else 'UNAVAILABLE'}: {oauth_reason}")
     for src in SOURCES:
         missing = ", ".join(k for k in src.requires_keys if not keys.get(k))
         status = "OK" if src.available(keys) else f"UNAVAILABLE{': ' + missing if missing else ''}"
@@ -155,7 +155,7 @@ def _cmd_setup_interactive() -> int:
     # Step 1: show what's already configured
     print("Checking existing configuration...\n")
     oauth_ready, oauth_reason = hermes_x.oauth_status()
-    print(f"  {'✓' if oauth_ready else '✗'} {'Hermes xai-oauth':<24} {oauth_reason}")
+    print(f"  {'✓' if oauth_ready else '✗'} {'SuperGrok OAuth bridge':<24} {oauth_reason}")
     if not oauth_ready:
         print("    Configure with: hermes auth add xai-oauth && hermes tools enable x_search")
     found_count = 0
@@ -324,7 +324,7 @@ def cmd_doctor(_args: argparse.Namespace) -> int:
     # Sources
     print(f"\n[Data Sources]")
     oauth_ready, oauth_reason = hermes_x.oauth_status()
-    print(f"  {'✓' if oauth_ready else '✗'} {'hermes_xai_oauth':<20} {oauth_reason}")
+    print(f"  {'✓' if oauth_ready else '✗'} {'supergrok_oauth':<20} {oauth_reason}")
     for src in SOURCES:
         if src.available(keys):
             print(f"  ✓ {src.name:<20} ready")
@@ -959,7 +959,7 @@ def cmd_first_mentions(args: argparse.Namespace) -> int:
     """Run the KOL first-mention auto-scout pass in isolation."""
     keys = all_keys()
     if not _has_kol_source(keys):
-        print("Hermes xai-oauth required. Paid fallbacks require GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1.")
+        print("SuperGrok OAuth bridge required. Paid fallbacks require GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1.")
         return 1
     since = args.since_hours
     kols = kol_lib.load_all()
@@ -990,7 +990,7 @@ def cmd_kols(args: argparse.Namespace) -> int:
     """Fetch recent posts from every tracked KOL. Prints a digest."""
     keys = all_keys()
     if not _has_kol_source(keys):
-        print("Hermes xai-oauth not ready. Paid fallbacks require explicit GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1 opt-in.")
+        print("SuperGrok OAuth bridge not ready. Paid fallbacks require explicit GOLD_DIGGER_ALLOW_PAID_X_FALLBACK=1 opt-in.")
         return 1
     kols = kol_lib.load_all()
     if not kols:

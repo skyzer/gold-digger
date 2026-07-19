@@ -1,9 +1,12 @@
-"""Hermes SuperGrok OAuth source for X search.
+"""Cross-agent SuperGrok OAuth source for X search.
 
-Gold Digger shells out to Hermes's first-class ``x_search`` tool and then
-exports the resulting session to verify the tool result itself.  The final
-assistant text is never trusted for credential provenance: only an actual
-tool result with ``credential_source: xai-oauth`` is accepted.
+Gold Digger can run under Claude Code, Codex, OpenClaw, Hermes, or a plain
+cron process.  It shells out to the Hermes CLI solely as an OAuth/tool bridge,
+then exports the resulting session to verify the tool result itself.  The
+host agent does not need to use Hermes as its main model or runtime.
+
+The final assistant text is never trusted for credential provenance: only an
+actual tool result with ``credential_source: xai-oauth`` is accepted.
 """
 from __future__ import annotations
 
@@ -15,6 +18,7 @@ import shutil
 import subprocess
 import threading
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from sources import xai
@@ -37,7 +41,15 @@ def _hermes_binary() -> Optional[str]:
     override = os.environ.get("GOLD_DIGGER_HERMES_BIN")
     if override:
         return override
-    return shutil.which("hermes")
+    discovered = shutil.which("hermes")
+    if discovered:
+        return discovered
+    # Agent services and cron often have a smaller PATH than an interactive
+    # shell. Check the standard per-user install location before giving up.
+    candidate = Path.home() / ".local" / "bin" / "hermes"
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
+    return None
 
 
 def _run(command: List[str], timeout: int) -> subprocess.CompletedProcess[str]:
